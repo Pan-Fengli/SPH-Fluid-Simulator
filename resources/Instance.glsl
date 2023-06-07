@@ -9,9 +9,11 @@
 layout(location=0) in vec3 Position;
 layout(location=1) in vec3 Normal;
 layout(location=2) in mat4 ModelMtx;
+layout(location=6) in vec3 Color;
 
 out vec3 fragPosition;
 out vec3 fragNormal;
+out vec3 fragColor;
 
 uniform mat4 viewProjMtx=mat4(1);
 
@@ -24,6 +26,7 @@ void main() {
 
 	fragPosition=vec3(ModelMtx * vec4(Position,1));
 	fragNormal=vec3(ModelMtx * vec4(Normal,0));
+	fragColor=Color;
 }
 
 #endif
@@ -34,6 +37,7 @@ void main() {
 
 in vec3 fragPosition;
 in vec3 fragNormal;
+in vec3 fragColor;
 
 uniform vec3 LightDirection=normalize(vec3(-1,0,0));
 uniform vec3 LightColor=vec3(1.0, 1.0, 1.0);
@@ -47,7 +51,7 @@ out vec4 finalColor;
 
 void main() {
 	// Compute irradiance (sum of ambient & direct lighting)
-	vec3 irradiance= vec3(0.3,0.3,0.3) * DiffuseColor + DiffuseColor * LightColor * max(0,dot(LightDirection,normalize(fragNormal)));
+	vec3 irradiance= vec3(0.3,0.3,0.3) * fragColor + fragColor * LightColor * max(0,dot(LightDirection,normalize(fragNormal)));
 	
 	// Gamma correction
 	finalColor=vec4(irradiance,1);

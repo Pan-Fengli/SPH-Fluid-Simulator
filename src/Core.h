@@ -17,6 +17,7 @@
 
 // Set up GLUT
 #include "GL/glut.h"
+#include <GL/freeglut_ext.h>
 
 // Types
 typedef unsigned int uint;

@@ -32,6 +32,7 @@ public:
 	void SpecialKeys(int key, int x, int y);
 	void MouseButton(int btn,int state,int x,int y);
 	void MouseMotion(int x,int y);
+	void MouseWheel(int button, int dir, int x, int y);
 
 private:
 	// Window management

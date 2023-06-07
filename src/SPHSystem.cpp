@@ -38,7 +38,7 @@ SPHSystem::SPHSystem(unsigned int numParticles, float mass, float restDensity, f
 
 	POLY6 = 315.0f / (64.0f * PI * pow(h, 9));
 	SPIKY_GRAD = -45.0f / (PI * pow(h, 6));
-	SPIKY_LAP = 45.0f / (PI * pow(h, 6));
+	SPIKY_LAP = 90.0f / (PI * pow(h, 6));
 	MASS = mass;
 	GAS_CONSTANT = gasConst;
 	H2 = h * h;
@@ -77,6 +77,40 @@ SPHSystem::SPHSystem(unsigned int numParticles, float mass, float restDensity, f
 	glVertexAttribDivisor(3,1);
 	glVertexAttribDivisor(4,1);
 	glVertexAttribDivisor(5,1);
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+	glBindVertexArray(0);
+
+
+	//生成颜色数组
+	std::vector<glm::vec3> Colors;
+	for (int i = 0; i < particles.size(); i++) {
+		if (i < (particles.size()/2))
+		{
+			Colors.push_back(glm::vec3(0.9f, 0.1f, 0.0f));
+		}
+		else {
+			Colors.push_back(glm::vec3(0.0f, 0.5f, 0.9f));
+		}
+		printf("%d = %f \n", i, Colors[i].x);
+	}
+	// Generate VBO for sphere model matrices
+	GLuint cvbo,ebo;//, vao
+	glGenBuffers(1, &cvbo);
+	glGenBuffers(1, &ebo);
+	//glGenVertexArrays(1, &vao);
+	glBindBuffer(GL_ARRAY_BUFFER, cvbo);
+	glBufferData(GL_ARRAY_BUFFER, Colors.size() * sizeof(glm::vec3), Colors.data(), GL_STATIC_DRAW);
+
+	// Setup instance VAO
+	glBindVertexArray(sphere->vao);
+	glEnableVertexAttribArray(6);
+	glVertexAttribPointer(6, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat), 0);
+	glVertexAttribDivisor(6, 1);
+	////Bind to the EBO 
+	//glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
+	////Send the information to the gpu
+	//glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(unsigned int) * sphere->indices.size(), sphere->indices.data(), GL_STATIC_DRAW);
+	
 	glBindBuffer(GL_ARRAY_BUFFER, 0);
 	glBindVertexArray(0);
 
@@ -302,6 +336,8 @@ void SPHSystem::update(float deltaTime) {
 }
 
 void SPHSystem::draw(const glm::mat4& viewProjMtx, GLuint shader) {
+	//glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
+	//glClear(GL_COLOR_BUFFER_BIT);
 	// Calculate model matrices for each particle
 	for (int i = 0; i < particles.size(); i++) {
 		glm::mat4 translate = glm::translate(particles[i]->position);
@@ -316,7 +352,9 @@ void SPHSystem::draw(const glm::mat4& viewProjMtx, GLuint shader) {
 	glBindBuffer(GL_ARRAY_BUFFER, 0);
 
 	// Draw instanced particles
+	//int vertexColorLocation = glGetUniformLocation(shader, "DiffuseColor");
 	glUseProgram(shader);
+	//glUniform3f(vertexColorLocation, 0.9f, 0.1f, 0.0f);
 	glUniformMatrix4fv(glGetUniformLocation(shader, "viewProjMtx"), 1, false, (float*)&viewProjMtx);
 	glBindVertexArray(sphere->vao);
 	glDrawElementsInstanced(GL_TRIANGLES, sphere->indices.size(), GL_UNSIGNED_INT, 0, particles.size());
@@ -386,4 +424,8 @@ void SPHSystem::reset() {
 
 void SPHSystem::startSimulation() {
 	started = true;
+}
+
+void SPHSystem::pause() {
+	started = false;
 }

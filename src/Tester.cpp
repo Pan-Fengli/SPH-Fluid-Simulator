@@ -33,6 +33,7 @@ static void keyboard(unsigned char key,int x,int y)		{TESTER->Keyboard(key,x,y);
 static void specialKeys(int key, int x, int y) { TESTER->SpecialKeys(key, x, y); }
 static void mousebutton(int btn,int state,int x,int y)	{TESTER->MouseButton(btn,state,x,y);}
 static void mousemotion(int x, int y)					{TESTER->MouseMotion(x,y);}
+static void mouseWheel(int button, int dir, int x, int y){ TESTER->MouseWheel(button, dir, x, y);};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -62,6 +63,7 @@ Tester::Tester(const char *windowTitle,int argc,char **argv) {
 	glutKeyboardFunc( keyboard );
 	glutMouseFunc( mousebutton );
 	glutMotionFunc( mousemotion );
+	glutMouseWheelFunc(mouseWheel);
 	glutPassiveMotionFunc( mousemotion );
 	glutReshapeFunc( resize );
 
@@ -169,6 +171,19 @@ void Tester::Draw() {
 			sphSystem = new SPHSystem(numParticles, nMass, nRest, gasConst, nVisco, nh, -9.8, 1.f);
 		}
 
+		if (ImGui::Button("START")) {
+			if (sphSystem != NULL)
+			{
+				sphSystem->startSimulation();
+			}
+		}
+		if (ImGui::Button("PAUSE")) {
+			if (sphSystem != NULL)
+			{
+				sphSystem->pause();
+			}
+		}
+
 		ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
 		ImGui::End();
 	}
@@ -224,6 +239,26 @@ void Tester::SpecialKeys(int key, int x, int y) {
 	switch (key) {	
 		
 	}
+}
+////////////////////////////////////////////////////////////////////////////////
+
+void Tester::MouseWheel(int button, int dir, int x, int y)
+{
+	if (dir > 0)
+	{
+		const float rate = 0.0005f;
+		float dist = glm::clamp(Cam->GetDistance() * (1.0f - x * rate), 0.01f, 1000.0f);
+		Cam->SetDistance(dist);
+	}
+	else
+	{
+		// Zoom out
+		const float rate = 0.0005f;
+		float dist = glm::clamp(Cam->GetDistance() * (1.0f + x * rate), 0.01f, 1000.0f);
+		Cam->SetDistance(dist);
+	}
+
+	return;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

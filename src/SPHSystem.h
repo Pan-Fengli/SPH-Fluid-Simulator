@@ -61,5 +61,6 @@ public:
 
 	void reset();
 	void startSimulation();
+	void pause();
 };
 
