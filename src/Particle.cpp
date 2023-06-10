@@ -4,11 +4,13 @@
 
 int Particle::pCount = 0;
 
-Particle::Particle(float mass, float size, glm::vec3 position, glm::vec3 velocity) {
+Particle::Particle(float mass, float size, glm::vec3 position, glm::vec3 velocity,int type, float ci) {
 	this->mass = mass;
 	this->size = size;
 	this->position = position;
 	this->velocity = velocity;
+	this->type = type;
+	this->ci = ci;
 
 	force = glm::vec3(0);
 	acceleration = glm::vec3(0);

@@ -90,7 +90,7 @@ Tester::Tester(const char *windowTitle,int argc,char **argv) {
 	Cam->SetAspect(float(WinX)/float(WinY));
 
 	//init SPH system
-	sphSystem = new SPHSystem(15, 0.02f, 1000, 1, 1.04f, 0.15f, -9.8f, 0.2f);
+	sphSystem = new SPHSystem(15, 0.02f, 0.025f, 1000, 800, 1, 0.84f, 0.54f, 0.15f, -9.8f, 0.2f);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -120,7 +120,7 @@ void Tester::Update() {
 	
 	//update sph system
 	sphSystem->update(deltaTime);
-
+	
 	// Tell glut to re-display the scene
 	glutSetWindow(WindowHandle);
 	glutPostRedisplay();
@@ -148,27 +148,35 @@ void Tester::Draw() {
 	ImGui_ImplGLUT_NewFrame();
 	{
 		static int numParticles = 15;
-		static float nMass = 0.02;
+		static float nMass1 = 0.02;
+		static float nMass2 = 0.025;
 		static float nh = 0.15f;
-		static float nRest = 1000.f;
-		static float nVisco = 3.5f;
+		static float nRest1 = 1000.f;
+		static float nRest2 = 800.f;
+		static float nVisco1 = 3.5f;
+		static float nVisco2 = 3.5f;
 		static float gasConst = 1.f;
+		static float tension = 0.2f;
 		static int counter = 0;
 
 		ImGui::Begin("SPH debug");                          // Create GUI window
 
 		ImGui::Text("Change values for the simulation. Press RESET to commit changes"); 
 
-		ImGui::SliderInt("Number of Particles", &numParticles, 10, 600);            // Edit number of particles
-		ImGui::SliderFloat("Mass of Particles", &nMass, 0.001f, 1.f);            // Edit mass
+		ImGui::SliderInt("Number of Particles", &numParticles, 10, 100);            // Edit number of particles
+		ImGui::SliderFloat("Mass of Particle 1", &nMass1, 0.001f, 1.f);            // Edit mass
+		ImGui::SliderFloat("Mass of Particle 2", &nMass2, 0.001f, 1.f);            // Edit mass
 		ImGui::SliderFloat("Support Radius", &nh, 0.001f, 1.f);            // Edit support radius
-		ImGui::SliderFloat("Rest Density", &nRest, 0.001f, 2000.f);            // Edit rest density
-		ImGui::SliderFloat("Viscosity Constant", &nVisco, 0.001f, 5.f);            // Edit viscosity
+		ImGui::SliderFloat("Rest Density 1", &nRest1, 0.001f, 2000.f);            // Edit rest density
+		ImGui::SliderFloat("Rest Density 2", &nRest2, 0.001f, 2000.f);            // Edit rest density
+		ImGui::SliderFloat("Viscosity Constant 1", &nVisco1, 0.001f, 5.f);            // Edit viscosity
+		ImGui::SliderFloat("Viscosity Constant 2", &nVisco2, 0.001f, 5.f);            // Edit viscosity
 		ImGui::SliderFloat("Gas Constant", &gasConst, 0.001f, 5.f);            // Edit gas constant
+		ImGui::SliderFloat("Tension", &tension, 0.001f, 3.f);            // 界面张力
 
 		if (ImGui::Button("RESET")) {
 			delete sphSystem;
-			sphSystem = new SPHSystem(numParticles, nMass, nRest, gasConst, nVisco, nh, -9.8, 1.f);
+			sphSystem = new SPHSystem(numParticles, nMass1,nMass2, nRest1,nRest2, gasConst, nVisco1, nVisco2, nh, -9.8, tension);
 		}
 
 		if (ImGui::Button("START")) {
@@ -180,6 +188,15 @@ void Tester::Draw() {
 		if (ImGui::Button("PAUSE")) {
 			if (sphSystem != NULL)
 			{
+				sphSystem->pause();
+			}
+		}
+		if (ImGui::Button("SINGLE")) {
+			if (sphSystem != NULL)
+			{
+				//sphSystem->single();
+				sphSystem->startSimulation();
+				sphSystem->update(deltaTime);
 				sphSystem->pause();
 			}
 		}

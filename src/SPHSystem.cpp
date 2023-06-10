@@ -1,6 +1,8 @@
 #include "SPHSystem.h"
 
 #include <iostream>
+#include<fstream>
+using namespace std;
 #include <cstdlib>
 #include <cstring>
 #include <mutex>
@@ -28,10 +30,12 @@ uint getHash(const glm::ivec3& cell) {
 	) % TABLE_SIZE;
 }
 
-SPHSystem::SPHSystem(unsigned int numParticles, float mass, float restDensity, float gasConst, float viscosity, float h, float g, float tension) {
+SPHSystem::SPHSystem(unsigned int numParticles, float mass1, float mass2, float restDensity1, float restDensity2, float gasConst, float viscosity1, float viscosity2, float h, float g, float tension) {
 	this->numParticles = numParticles;
-	this->restDensity = restDensity;
-	this->viscosity = viscosity;
+	this->restDensity1 = restDensity1;
+	this->restDensity2 = restDensity2;
+	this->viscosity1 = viscosity1;
+	this->viscosity2 = viscosity2;
 	this->h = h;
 	this->g = g;
 	this->tension = tension;
@@ -39,10 +43,12 @@ SPHSystem::SPHSystem(unsigned int numParticles, float mass, float restDensity, f
 	POLY6 = 315.0f / (64.0f * PI * pow(h, 9));
 	SPIKY_GRAD = -45.0f / (PI * pow(h, 6));
 	SPIKY_LAP = 90.0f / (PI * pow(h, 6));
-	MASS = mass;
+	MASS1 = mass1;
+	MASS2 = mass2;
 	GAS_CONSTANT = gasConst;
 	H2 = h * h;
-	SELF_DENS = MASS * POLY6 * pow(h, 6);
+	SELF_DENS1 = MASS1 * POLY6 * pow(h, 6);
+	SELF_DENS2 = MASS2 * POLY6 * pow(h, 6);
 
 	//setup densities & volume
 	int cbNumParticles = numParticles * numParticles * numParticles;
@@ -91,12 +97,12 @@ SPHSystem::SPHSystem(unsigned int numParticles, float mass, float restDensity, f
 		else {
 			Colors.push_back(glm::vec3(0.0f, 0.5f, 0.9f));
 		}
-		printf("%d = %f \n", i, Colors[i].x);
+		//printf("%d = %f \n", i, Colors[i].x);
 	}
 	// Generate VBO for sphere model matrices
-	GLuint cvbo,ebo;//, vao
+	GLuint cvbo;//, vao,ebo
 	glGenBuffers(1, &cvbo);
-	glGenBuffers(1, &ebo);
+	//glGenBuffers(1, &ebo);
 	//glGenVertexArrays(1, &vao);
 	glBindBuffer(GL_ARRAY_BUFFER, cvbo);
 	glBufferData(GL_ARRAY_BUFFER, Colors.size() * sizeof(glm::vec3), Colors.data(), GL_STATIC_DRAW);
@@ -154,6 +160,8 @@ SPHSystem::~SPHSystem() {
 void SPHSystem::initParticles() {
 	std::srand(1024);
 	float particleSeperation = h + 0.01f;
+	int pcount = 0;
+	int size = particles.size();
 	for (int i = 0; i < numParticles; i++) {
 		for (int j = 0; j < numParticles; j++) {
 			for (int k = 0; k < numParticles; k++) {
@@ -164,10 +172,25 @@ void SPHSystem::initParticles() {
 				glm::vec3 nParticlePos = glm::vec3(i * particleSeperation + ranX - 1.5f, j * particleSeperation + ranY + h + 0.1f, k * particleSeperation + ranZ - 1.5f);
 
 				//create new particle
-				Particle* nParticle = new Particle(MASS, h,	nParticlePos, glm::vec3(0));
+				//Particle* nParticle = new Particle(MASS, h,	nParticlePos, glm::vec3(0));
+				Particle* nParticle;
+				//初始化两种粒子
+				if (pcount < size/2)
+				{
+					//红色的粒子
+					nParticlePos.y += 0.2f;
+					nParticle = new Particle(MASS1, h, nParticlePos, glm::vec3(0), 1, 0.5);
+					nParticle->viscosity = viscosity1;
+				}
+				else {
+					//蓝色的粒子
+					nParticle = new Particle(MASS2, h, nParticlePos, glm::vec3(0), 2, -0.5);
+					nParticle->viscosity = viscosity2;
+				}
 
 				//append particle
 				particles[i + (j + numParticles * k) * numParticles] = nParticle;
+				pcount++;
 			}
 		}
 	}
@@ -178,7 +201,7 @@ void SPHSystem::initParticles() {
  * and pressures of particles in the given SPH System.
  */
 void parallelDensityAndPressures(const SPHSystem& sphSystem, int start, int end) {
-	float massPoly6Product = sphSystem.MASS * sphSystem.POLY6;
+	float massPoly6Product = sphSystem.MASS1 * sphSystem.POLY6;
 	
 	for (int i = start; i < end; i++) {
 		float pDensity = 0;
@@ -196,7 +219,7 @@ void parallelDensityAndPressures(const SPHSystem& sphSystem, int start, int end)
 					while (pj != NULL) {
 						float dist2 = glm::length2(pj->position - pi->position);
 						if (dist2 < sphSystem.H2 && pi != pj) {
-							pDensity += massPoly6Product * glm::pow(sphSystem.H2 - dist2, 3);
+							pDensity += pj->mass * sphSystem.POLY6 * glm::pow(sphSystem.H2 - dist2, 3);
 						}
 						pj = pj->next;
 					}
@@ -205,10 +228,18 @@ void parallelDensityAndPressures(const SPHSystem& sphSystem, int start, int end)
 		}
 		
 		// Include self density (as itself isn't included in neighbour)
-		pi->density = pDensity + sphSystem.SELF_DENS;
+		if (pi->type == 1)
+		{
+			pi->density = pDensity + sphSystem.SELF_DENS1;
+		}
+		else {
+			pi->density = pDensity + sphSystem.SELF_DENS2;
+		}
+		
 
 		// Calculate pressure
-		float pPressure = sphSystem.GAS_CONSTANT * (pi->density - sphSystem.restDensity);
+		float Rdens = pi->type == 1 ? sphSystem.restDensity1 : sphSystem.restDensity2;
+		float pPressure = sphSystem.GAS_CONSTANT * (pi->density - Rdens);
 		pi->pressure = pPressure;
 	}
 }
@@ -222,6 +253,9 @@ void parallelForces(const SPHSystem& sphSystem, int start, int end) {
 		Particle* pi = sphSystem.particles[i];
 		pi->force = glm::vec3(0);
 		glm::ivec3 cell = sphSystem.getCell(pi);
+
+		glm::vec3 n= glm::vec3(0);//用于计算surface force的法向
+		float lapCi=0;//Ci的拉普拉斯
 
 		for (int x = -1; x <= 1; x++) {
 			for (int y = -1; y <= 1; y++) {
@@ -239,20 +273,54 @@ void parallelForces(const SPHSystem& sphSystem, int start, int end) {
 							glm::vec3 dir = glm::normalize(pj->position - pi->position);
 
 							//apply pressure force
-							glm::vec3 pressureForce = -dir * sphSystem.MASS * (pi->pressure + pj->pressure) / (2 * pj->density) * sphSystem.SPIKY_GRAD;
+							glm::vec3 pressureForce = -dir * pj->mass * (pi->pressure + pj->pressure) / (2 * pj->density) * sphSystem.SPIKY_GRAD;
 							pressureForce *= std::pow(sphSystem.h - dist, 2);
 							pi->force += pressureForce;
 
 							//apply viscosity force
 							glm::vec3 velocityDif = pj->velocity - pi->velocity;
-							glm::vec3 viscoForce = sphSystem.viscosity * sphSystem.MASS * (velocityDif / pj->density) * sphSystem.SPIKY_LAP * (sphSystem.h - dist);
+							glm::vec3 viscoForce = (pi->viscosity+pj->viscosity)/2 * pj->mass * (velocityDif / pj->density) * sphSystem.SPIKY_LAP * (sphSystem.h - dist);
 							pi->force += viscoForce;
+
+							//计算ci的散度，以确定n
+							glm::vec3 nci = dir * pj->mass * pj->ci / pj->density * sphSystem.SPIKY_GRAD;
+							nci *= std::pow(sphSystem.h - dist, 2);
+							n += nci;
+
+							//计算ci的拉普拉斯
+							float lci= pj->mass * pj->ci / pj->density * sphSystem.SPIKY_LAP * (sphSystem.h - dist);
+							lapCi += lci;
 						}
 						pj = pj->next;
 					}
 				}
 			}
 		}
+		//计算完之后再加上边界力
+		if (dot(n,n) > 0)
+		{
+			glm::normalize(n);
+		}
+		else {
+			n = glm::vec3(0);
+		}
+		glm::vec3 intefaceForce = -1 * sphSystem.tension * lapCi * n;
+		//printf("lapc:%f", lapCi);//0.00001
+		if (i == 100)
+		{
+			//printf("before:%f,%f,%f \n", intefaceForce.x, intefaceForce.y, intefaceForce.z);
+		}
+		//fstream f;
+		//f.open("data.txt", ios::out);
+		//输入你想写入的内容 
+		//f << "before:" << to_string(pi->force) << endl;
+		pi->force += intefaceForce;
+		//f << "after:" << to_string(pi->force) << endl;
+		if (i == 100)
+		{
+			//printf("after:%f,%f,%f \n", pi->force.x, pi->force.y, pi->force.z);
+		}
+		//f.close();
 	}
 }
 
@@ -272,7 +340,7 @@ void parallelUpdateParticlePositions(const SPHSystem& sphSystem, float deltaTime
 		p->position += p->velocity * deltaTime;
 
 		// Handle collisions with box
-		float boxWidth = 3.f;
+		float boxWidth = 1.8f;
 		float elasticity = 0.5f;
 		if (p->position.y < p->size) {
 			p->position.y = -p->position.y + 2 * p->size + 0.0001f;
@@ -303,7 +371,7 @@ void parallelUpdateParticlePositions(const SPHSystem& sphSystem, float deltaTime
 
 void SPHSystem::update(float deltaTime) {
 	if (!started) return;
-	
+
 	// To increase system stability, a fixed deltaTime is set
 	deltaTime = 0.003f;
 
@@ -427,5 +495,11 @@ void SPHSystem::startSimulation() {
 }
 
 void SPHSystem::pause() {
+	started = false;
+}
+
+void SPHSystem::single() {
+	started = true;
+	SPHSystem::update(0.003);
 	started = false;
 }

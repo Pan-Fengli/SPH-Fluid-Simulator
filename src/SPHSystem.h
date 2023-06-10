@@ -37,15 +37,16 @@ private:
 	int tableBlockBoundaries[THREAD_COUNT + 1];
 
 public:
-	SPHSystem(unsigned int numParticles, float mass, float restDensity, float gasConst, float viscosity, float h, float g, float tension);
+	SPHSystem(unsigned int numParticles, float mass1, float mass2, float restDensity1, float restDensity2, float gasConst, float viscosity1, float viscosity2, float h, float g, float tension);
 	~SPHSystem();
 
 	//kernel/fluid constants
-	float POLY6, SPIKY_GRAD, SPIKY_LAP, GAS_CONSTANT, MASS, H2, SELF_DENS;
+	float POLY6, SPIKY_GRAD, SPIKY_LAP, GAS_CONSTANT, MASS1,MASS2, H2, SELF_DENS1, SELF_DENS2;
 
 	//fluid properties
-	float restDensity;
-	float viscosity, h, g, tension;
+	float restDensity1;
+	float restDensity2;
+	float viscosity1, viscosity2, h, g, tension;
 
 	std::vector<Particle*> particles;
 	Particle** particleTable;
@@ -62,5 +63,6 @@ public:
 	void reset();
 	void startSimulation();
 	void pause();
+	void single();
 };
 
