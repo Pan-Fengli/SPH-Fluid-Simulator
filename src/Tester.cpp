@@ -90,7 +90,7 @@ Tester::Tester(const char *windowTitle,int argc,char **argv) {
 	Cam->SetAspect(float(WinX)/float(WinY));
 
 	//init SPH system
-	sphSystem = new SPHSystem(15, 0.02f, 0.025f, 1000, 800, 1, 0.84f, 0.54f, 0.15f, -9.8f, 0.2f);
+	sphSystem = new SPHSystem(15, 0.025f, 0.015f, 1000, 800, 1, 0.84f, 0.54f, 0.15f, -9.8f, 0.2f);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -147,16 +147,16 @@ void Tester::Draw() {
 	ImGui_ImplOpenGL2_NewFrame();
 	ImGui_ImplGLUT_NewFrame();
 	{
-		static int numParticles = 15;
-		static float nMass1 = 0.02;
-		static float nMass2 = 0.025;
-		static float nh = 0.15f;
+		static int numParticles = 18;
+		static float nMass1 = 0.03;
+		static float nMass2 = 0.006;
+		static float nh = 0.1f;
 		static float nRest1 = 1000.f;
-		static float nRest2 = 800.f;
-		static float nVisco1 = 3.5f;
-		static float nVisco2 = 3.5f;
-		static float gasConst = 1.f;
-		static float tension = 0.2f;
+		static float nRest2 = 500.f;
+		static float nVisco1 = 0.38f;//5,
+		static float nVisco2 = 0.3f;
+		static float gasConst = 1.5f;
+		static float tension = 0.35f;
 		static int counter = 0;
 
 		ImGui::Begin("SPH debug");                          // Create GUI window
@@ -164,8 +164,8 @@ void Tester::Draw() {
 		ImGui::Text("Change values for the simulation. Press RESET to commit changes"); 
 
 		ImGui::SliderInt("Number of Particles", &numParticles, 10, 100);            // Edit number of particles
-		ImGui::SliderFloat("Mass of Particle 1", &nMass1, 0.001f, 1.f);            // Edit mass
-		ImGui::SliderFloat("Mass of Particle 2", &nMass2, 0.001f, 1.f);            // Edit mass
+		ImGui::SliderFloat("Mass of Particle 1", &nMass1, 0.001f, 0.5f);            // Edit mass
+		ImGui::SliderFloat("Mass of Particle 2", &nMass2, 0.001f, 0.5f);            // Edit mass
 		ImGui::SliderFloat("Support Radius", &nh, 0.001f, 1.f);            // Edit support radius
 		ImGui::SliderFloat("Rest Density 1", &nRest1, 0.001f, 2000.f);            // Edit rest density
 		ImGui::SliderFloat("Rest Density 2", &nRest2, 0.001f, 2000.f);            // Edit rest density
@@ -176,7 +176,7 @@ void Tester::Draw() {
 
 		if (ImGui::Button("RESET")) {
 			delete sphSystem;
-			sphSystem = new SPHSystem(numParticles, nMass1,nMass2, nRest1,nRest2, gasConst, nVisco1, nVisco2, nh, -9.8, tension);
+			sphSystem = new SPHSystem(numParticles, nMass1, nMass2, nRest1,nRest2, gasConst, nVisco1, nVisco2, nh, -9.8, tension);
 		}
 
 		if (ImGui::Button("START")) {

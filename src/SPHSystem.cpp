@@ -42,7 +42,9 @@ SPHSystem::SPHSystem(unsigned int numParticles, float mass1, float mass2, float 
 
 	POLY6 = 315.0f / (64.0f * PI * pow(h, 9));
 	SPIKY_GRAD = -45.0f / (PI * pow(h, 6));
-	SPIKY_LAP = 90.0f / (PI * pow(h, 6));
+	SPIKY_LAP = 45.0f / (PI * pow(h, 6));
+	POLY6_GRAD = -945.0f/(32.0f * PI * pow(h, 9));
+	POLY6_LAP = 945.0f / (32.0f * PI * pow(h, 9));
 	MASS1 = mass1;
 	MASS2 = mass2;
 	GAS_CONSTANT = gasConst;
@@ -87,38 +89,7 @@ SPHSystem::SPHSystem(unsigned int numParticles, float mass1, float mass2, float 
 	glBindVertexArray(0);
 
 
-	//生成颜色数组
-	std::vector<glm::vec3> Colors;
-	for (int i = 0; i < particles.size(); i++) {
-		if (i < (particles.size()/2))
-		{
-			Colors.push_back(glm::vec3(0.9f, 0.1f, 0.0f));
-		}
-		else {
-			Colors.push_back(glm::vec3(0.0f, 0.5f, 0.9f));
-		}
-		//printf("%d = %f \n", i, Colors[i].x);
-	}
-	// Generate VBO for sphere model matrices
-	GLuint cvbo;//, vao,ebo
-	glGenBuffers(1, &cvbo);
-	//glGenBuffers(1, &ebo);
-	//glGenVertexArrays(1, &vao);
-	glBindBuffer(GL_ARRAY_BUFFER, cvbo);
-	glBufferData(GL_ARRAY_BUFFER, Colors.size() * sizeof(glm::vec3), Colors.data(), GL_STATIC_DRAW);
-
-	// Setup instance VAO
-	glBindVertexArray(sphere->vao);
-	glEnableVertexAttribArray(6);
-	glVertexAttribPointer(6, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat), 0);
-	glVertexAttribDivisor(6, 1);
-	////Bind to the EBO 
-	//glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
-	////Send the information to the gpu
-	//glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(unsigned int) * sphere->indices.size(), sphere->indices.data(), GL_STATIC_DRAW);
 	
-	glBindBuffer(GL_ARRAY_BUFFER, 0);
-	glBindVertexArray(0);
 
 	//start init
 	started = false;
@@ -178,12 +149,15 @@ void SPHSystem::initParticles() {
 				if (pcount < size/2)
 				{
 					//红色的粒子
-					nParticlePos.y += 0.2f;
+					nParticlePos.y += 0.3f;
+					nParticlePos.x -= particleSeperation;
 					nParticle = new Particle(MASS1, h, nParticlePos, glm::vec3(0), 1, 0.5);
 					nParticle->viscosity = viscosity1;
 				}
 				else {
 					//蓝色的粒子
+					nParticlePos.y += 0.3f;
+					nParticlePos.x += particleSeperation;
 					nParticle = new Particle(MASS2, h, nParticlePos, glm::vec3(0), 2, -0.5);
 					nParticle->viscosity = viscosity2;
 				}
@@ -239,8 +213,13 @@ void parallelDensityAndPressures(const SPHSystem& sphSystem, int start, int end)
 
 		// Calculate pressure
 		float Rdens = pi->type == 1 ? sphSystem.restDensity1 : sphSystem.restDensity2;
-		float pPressure = sphSystem.GAS_CONSTANT * (pi->density - Rdens);
+		//float pPressure = sphSystem.GAS_CONSTANT * max(0.f,(pi->density - Rdens));//不允许是负的，不能够有收缩力?min?max?
+		float pPressure = sphSystem.GAS_CONSTANT * (pi->density - Rdens);//不允许是负的，不能够有收缩力?min?max?
 		pi->pressure = pPressure;
+		//if (pi->density - Rdens < 0)
+		//{
+		//	printf("%f", pi->density - Rdens);
+		//}
 	}
 }
 
@@ -283,12 +262,12 @@ void parallelForces(const SPHSystem& sphSystem, int start, int end) {
 							pi->force += viscoForce;
 
 							//计算ci的散度，以确定n
-							glm::vec3 nci = dir * pj->mass * pj->ci / pj->density * sphSystem.SPIKY_GRAD;
-							nci *= std::pow(sphSystem.h - dist, 2);
+							glm::vec3 nci = dir * pj->mass * (pj->ci - pi->ci) / pj->density * sphSystem.POLY6_GRAD;//计算norm的时候用差值
+							nci *= glm::pow(sphSystem.H2 - dist2, 2) * dist;
 							n += nci;
 
 							//计算ci的拉普拉斯
-							float lci= pj->mass * pj->ci / pj->density * sphSystem.SPIKY_LAP * (sphSystem.h - dist);
+							float lci = pj->mass * (pj->ci - pi->ci) / pj->density * sphSystem.POLY6_LAP * (sphSystem.H2 - dist2) * (5 * dist2 - sphSystem.H2);
 							lapCi += lci;
 						}
 						pj = pj->next;
@@ -333,37 +312,38 @@ void parallelUpdateParticlePositions(const SPHSystem& sphSystem, float deltaTime
 		Particle *p = sphSystem.particles[i];
 
 		//calculate acceleration and velocity
-		glm::vec3 acceleration = p->force / p->density + glm::vec3(0, sphSystem.g, 0);
+		glm::vec3 acceleration = p->force / p->density + glm::vec3(0, sphSystem.g, 0);//重力怎么算？
 		p->velocity += acceleration * deltaTime;
 		
 		// Update position
 		p->position += p->velocity * deltaTime;
 
 		// Handle collisions with box
-		float boxWidth = 1.8f;
-		float elasticity = 0.5f;
+		float boxWidth = 1.6f;
+		float elasticity = 0.1f;
+		float center = -1.5f + (sphSystem.numParticles * sphSystem.h)/2;
 		if (p->position.y < p->size) {
 			p->position.y = -p->position.y + 2 * p->size + 0.0001f;
 			p->velocity.y = -p->velocity.y * elasticity;
 		}
 
-		if (p->position.x < p->size - boxWidth) {
-			p->position.x = -p->position.x + 2 * (p->size - boxWidth) + 0.0001f;
+		if (p->position.x < p->size - boxWidth + center) {
+			p->position.x = -p->position.x + 2 * (p->size - boxWidth + center) + 0.0001f;
 			p->velocity.x = -p->velocity.x * elasticity;
 		}
 
-		if (p->position.x > -p->size + boxWidth) {
-			p->position.x = -p->position.x + 2 * -(p->size - boxWidth) - 0.0001f;
+		if (p->position.x > -p->size + (boxWidth + center)) {
+			p->position.x = -p->position.x + 2 * -(p->size - (boxWidth + center)) - 0.0001f;
 			p->velocity.x = -p->velocity.x * elasticity;
 		}
 
-		if (p->position.z < p->size - boxWidth) {
-			p->position.z = -p->position.z + 2 * (p->size - boxWidth) + 0.0001f;
+		if (p->position.z < p->size - boxWidth + center) {
+			p->position.z = -p->position.z + 2 * (p->size - boxWidth + center) + 0.0001f;
 			p->velocity.z = -p->velocity.z * elasticity;
 		}
 
-		if (p->position.z > -p->size + boxWidth) {
-			p->position.z = -p->position.z + 2 * -(p->size - boxWidth) - 0.0001f;
+		if (p->position.z > -p->size + (boxWidth + center)) {
+			p->position.z = -p->position.z + 2 * -(p->size - (boxWidth + center)) - 0.0001f;
 			p->velocity.z = -p->velocity.z * elasticity;
 		}
 	}
@@ -373,7 +353,7 @@ void SPHSystem::update(float deltaTime) {
 	if (!started) return;
 
 	// To increase system stability, a fixed deltaTime is set
-	deltaTime = 0.003f;
+	deltaTime = 0.004f;
 
 	// Build particle hash table
 	buildTable();
@@ -404,8 +384,33 @@ void SPHSystem::update(float deltaTime) {
 }
 
 void SPHSystem::draw(const glm::mat4& viewProjMtx, GLuint shader) {
-	//glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
-	//glClear(GL_COLOR_BUFFER_BIT);
+
+	//生成颜色数组
+	std::vector<glm::vec3> Colors;
+	for (int i = 0; i < particles.size(); i++) {
+		if (particles[i]->type ==1)
+		{
+			Colors.push_back(glm::vec3(0.9f, 0.1f, 0.0f));
+		}
+		else {
+			Colors.push_back(glm::vec3(0.0f, 0.5f, 0.9f));
+		}
+	}
+	// Generate VBO for sphere model matrices
+	GLuint cvbo;//, vao,ebo
+	glGenBuffers(1, &cvbo);
+	glBindBuffer(GL_ARRAY_BUFFER, cvbo);
+	glBufferData(GL_ARRAY_BUFFER, Colors.size() * sizeof(glm::vec3), Colors.data(), GL_STATIC_DRAW);
+
+	// Setup instance VAO
+	glBindVertexArray(sphere->vao);
+	glEnableVertexAttribArray(6);
+	glVertexAttribPointer(6, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat), 0);
+	glVertexAttribDivisor(6, 1);
+
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+	glBindVertexArray(0);
+
 	// Calculate model matrices for each particle
 	for (int i = 0; i < particles.size(); i++) {
 		glm::mat4 translate = glm::translate(particles[i]->position);

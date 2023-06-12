@@ -15,7 +15,7 @@ class SPHSystem
 {
 private:
 	//particle data
-	unsigned int numParticles;
+	
 	std::vector<std::vector<Particle*>> neighbouringParticles;
 	bool started;
 
@@ -41,8 +41,8 @@ public:
 	~SPHSystem();
 
 	//kernel/fluid constants
-	float POLY6, SPIKY_GRAD, SPIKY_LAP, GAS_CONSTANT, MASS1,MASS2, H2, SELF_DENS1, SELF_DENS2;
-
+	float POLY6, POLY6_GRAD, POLY6_LAP, SPIKY_GRAD, SPIKY_LAP, GAS_CONSTANT, MASS1,MASS2, H2, SELF_DENS1, SELF_DENS2;
+	unsigned int numParticles;
 	//fluid properties
 	float restDensity1;
 	float restDensity2;
