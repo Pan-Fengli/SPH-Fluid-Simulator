@@ -215,11 +215,12 @@ void parallelDensityAndPressures(const SPHSystem& sphSystem, int start, int end)
 		float Rdens = pi->type == 1 ? sphSystem.restDensity1 : sphSystem.restDensity2;
 		//float pPressure = sphSystem.GAS_CONSTANT * max(0.f,(pi->density - Rdens));//不允许是负的，不能够有收缩力?min?max?
 		float pPressure = sphSystem.GAS_CONSTANT * (pi->density - Rdens);//不允许是负的，不能够有收缩力?min?max?
+		if (pPressure < 0)
+		{
+			//printf("%f\n", pi->density);
+			pPressure *= 0.00;
+		}
 		pi->pressure = pPressure;
-		//if (pi->density - Rdens < 0)
-		//{
-		//	printf("%f", pi->density - Rdens);
-		//}
 	}
 }
 
@@ -252,7 +253,7 @@ void parallelForces(const SPHSystem& sphSystem, int start, int end) {
 							glm::vec3 dir = glm::normalize(pj->position - pi->position);
 
 							//apply pressure force
-							glm::vec3 pressureForce = -dir * pj->mass * (pi->pressure + pj->pressure) / (2 * pj->density) * sphSystem.SPIKY_GRAD;
+							glm::vec3 pressureForce = -dir * pj->mass * (pi->pressure + pj->pressure) / (2 * pj->density) * sphSystem.SPIKY_GRAD * (-1.0f);
 							pressureForce *= std::pow(sphSystem.h - dist, 2);
 							pi->force += pressureForce;
 
@@ -261,7 +262,7 @@ void parallelForces(const SPHSystem& sphSystem, int start, int end) {
 							glm::vec3 viscoForce = (pi->viscosity+pj->viscosity)/2 * pj->mass * (velocityDif / pj->density) * sphSystem.SPIKY_LAP * (sphSystem.h - dist);
 							pi->force += viscoForce;
 
-							//计算ci的散度，以确定n
+							//计算ci的梯度，以确定n
 							glm::vec3 nci = dir * pj->mass * (pj->ci - pi->ci) / pj->density * sphSystem.POLY6_GRAD;//计算norm的时候用差值
 							nci *= glm::pow(sphSystem.H2 - dist2, 2) * dist;
 							n += nci;
@@ -319,7 +320,7 @@ void parallelUpdateParticlePositions(const SPHSystem& sphSystem, float deltaTime
 		p->position += p->velocity * deltaTime;
 
 		// Handle collisions with box
-		float boxWidth = 1.6f;
+		float boxWidth = 0.8f;
 		float elasticity = 0.1f;
 		float center = -1.5f + (sphSystem.numParticles * sphSystem.h)/2;
 		if (p->position.y < p->size) {
@@ -353,7 +354,7 @@ void SPHSystem::update(float deltaTime) {
 	if (!started) return;
 
 	// To increase system stability, a fixed deltaTime is set
-	deltaTime = 0.004f;
+	deltaTime = 0.001f;
 
 	// Build particle hash table
 	buildTable();

@@ -147,16 +147,16 @@ void Tester::Draw() {
 	ImGui_ImplOpenGL2_NewFrame();
 	ImGui_ImplGLUT_NewFrame();
 	{
-		static int numParticles = 18;
-		static float nMass1 = 0.03;
-		static float nMass2 = 0.006;
-		static float nh = 0.1f;
-		static float nRest1 = 1000.f;
-		static float nRest2 = 500.f;
-		static float nVisco1 = 0.38f;//5,
-		static float nVisco2 = 0.3f;
-		static float gasConst = 1.5f;
-		static float tension = 0.35f;
+		static int numParticles = 22;
+		static float nMass1 = 0.05;//0.015
+		static float nMass2 = 0.01;//0.003
+		static float nh = 0.045f;//0.1
+		static float nRest1 = 1000.f;//1000
+		static float nRest2 = 200.f;//200
+		static float nVisco1 = 15.f;//5,50
+		static float nVisco2 = 15.f;
+		static float gasConst = 20.f;
+		static float tension = 0.6f;
 		static int counter = 0;
 
 		ImGui::Begin("SPH debug");                          // Create GUI window
@@ -169,9 +169,9 @@ void Tester::Draw() {
 		ImGui::SliderFloat("Support Radius", &nh, 0.001f, 1.f);            // Edit support radius
 		ImGui::SliderFloat("Rest Density 1", &nRest1, 0.001f, 2000.f);            // Edit rest density
 		ImGui::SliderFloat("Rest Density 2", &nRest2, 0.001f, 2000.f);            // Edit rest density
-		ImGui::SliderFloat("Viscosity Constant 1", &nVisco1, 0.001f, 5.f);            // Edit viscosity
-		ImGui::SliderFloat("Viscosity Constant 2", &nVisco2, 0.001f, 5.f);            // Edit viscosity
-		ImGui::SliderFloat("Gas Constant", &gasConst, 0.001f, 5.f);            // Edit gas constant
+		ImGui::SliderFloat("Viscosity Constant 1", &nVisco1, 0.001f, 20.f);            // Edit viscosity
+		ImGui::SliderFloat("Viscosity Constant 2", &nVisco2, 0.001f, 20.f);            // Edit viscosity
+		ImGui::SliderFloat("Gas Constant", &gasConst, 0.001f, 3.f);            // Edit gas constant
 		ImGui::SliderFloat("Tension", &tension, 0.001f, 3.f);            // 界面张力
 
 		if (ImGui::Button("RESET")) {
