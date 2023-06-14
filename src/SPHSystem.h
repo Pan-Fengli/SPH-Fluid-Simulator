@@ -42,6 +42,8 @@ public:
 
 	//kernel/fluid constants
 	float POLY6, POLY6_GRAD, POLY6_LAP, SPIKY_GRAD, SPIKY_LAP, GAS_CONSTANT, MASS1,MASS2, H2, SELF_DENS1, SELF_DENS2;
+	float DeltaTime;
+	float timeStep;
 	unsigned int numParticles;
 	//fluid properties
 	float restDensity1;
@@ -56,6 +58,7 @@ public:
 
 	//updates the SPH system
 	void update(float deltaTime);
+	void update1(float deltaTime);
 
 	//draws the SPH system & its particles
 	void draw(const glm::mat4& viewProjMtx, GLuint shader);
@@ -64,5 +67,9 @@ public:
 	void startSimulation();
 	void pause();
 	void single();
+	float updateTimeStepSizeCFL();
+	glm::vec3 SPHSystem::CubicKernelGradW(const glm::vec3& r);
+	void divergenceSolve();
+	void densitySolver();
 };
 

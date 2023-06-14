@@ -23,6 +23,10 @@ public:
 	float ci;//color Ù–‘£¨ci=0.5,-0.5;
 	float gas_constant;
 	float viscosity;
+	float alpha;//DFSPH factor
+	double densityAdv;
+	float kai;
+	double rho_predict;
 
 	Particle(float mass, float size, glm::vec3 position, glm::vec3 velocity,int type,float ci);
 	~Particle();

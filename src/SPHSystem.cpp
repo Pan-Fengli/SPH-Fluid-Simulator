@@ -52,6 +52,8 @@ SPHSystem::SPHSystem(unsigned int numParticles, float mass1, float mass2, float 
 	SELF_DENS1 = MASS1 * POLY6 * pow(h, 6);
 	SELF_DENS2 = MASS2 * POLY6 * pow(h, 6);
 
+	DeltaTime = 0.001f;
+	timeStep = DeltaTime;
 	//setup densities & volume
 	int cbNumParticles = numParticles * numParticles * numParticles;
 	neighbouringParticles.resize(cbNumParticles);
@@ -149,14 +151,15 @@ void SPHSystem::initParticles() {
 				if (pcount < size/2)
 				{
 					//红色的粒子
-					nParticlePos.y += 0.3f;
+					nParticlePos.y -= 0.05f;
 					nParticlePos.x -= particleSeperation;
 					nParticle = new Particle(MASS1, h, nParticlePos, glm::vec3(0), 1, 0.5);
 					nParticle->viscosity = viscosity1;
 				}
 				else {
 					//蓝色的粒子
-					nParticlePos.y += 0.3f;
+					//nParticlePos.y += 0.1f;
+					nParticlePos.y -= 0.05f;
 					nParticlePos.x += particleSeperation;
 					nParticle = new Particle(MASS2, h, nParticlePos, glm::vec3(0), 2, -0.5);
 					nParticle->viscosity = viscosity2;
@@ -350,11 +353,480 @@ void parallelUpdateParticlePositions(const SPHSystem& sphSystem, float deltaTime
 	}
 }
 
+/**
+ * Compute the factor alpha_i for all particles i
+ */
+void parallelComputeDFSPHFactor(const SPHSystem& sphSystem, int start, int end) {
+	
+	for (int i = start; i < end; i++) {
+		float alpha1 = 0;//第一部分
+		float alpha2 = 0;//第二部分
+		float alphai = 0;
+		Particle* pi = sphSystem.particles[i];
+		glm::ivec3 cell = sphSystem.getCell(pi);
+
+		for (int x = -1; x <= 1; x++) {
+			for (int y = -1; y <= 1; y++) {
+				for (int z = -1; z <= 1; z++) {
+					glm::ivec3 near_cell = cell + glm::ivec3(x, y, z);
+					uint index = getHash(near_cell);
+					Particle* pj = sphSystem.particleTable[index];
+					
+					// Iterate through cell linked list
+					while (pj != NULL) {
+						float dist2 = glm::length2(pj->position - pi->position);
+						if (dist2 < sphSystem.H2 && pi != pj) {
+							float tmp = pj->mass * sphSystem.POLY6 * glm::pow(sphSystem.H2 - dist2, 3);
+							alpha1 += tmp;
+							alpha2 += tmp * tmp;
+						}
+						pj = pj->next;
+					}
+				}
+			}
+		}
+		float mother = alpha1 * alpha1 + alpha2;//分母
+		if (mother > 0)
+		{
+			alphai = -pi->density / mother;
+		}
+		pi->alpha = alphai;
+	}
+}
+
+void parallelComputeNonePressureForces(const SPHSystem& sphSystem, int start, int end) {
+	for (int i = start; i < end; i++) {
+		Particle* pi = sphSystem.particles[i];
+		pi->force = glm::vec3(0);
+		glm::ivec3 cell = sphSystem.getCell(pi);
+
+		glm::vec3 n = glm::vec3(0);//用于计算surface force的法向
+		float lapCi = 0;//Ci的拉普拉斯
+
+		for (int x = -1; x <= 1; x++) {
+			for (int y = -1; y <= 1; y++) {
+				for (int z = -1; z <= 1; z++) {
+					glm::ivec3 near_cell = cell + glm::ivec3(x, y, z);
+					uint index = getHash(near_cell);
+					Particle* pj = sphSystem.particleTable[index];
+
+					// Iterate through cell linked list
+					while (pj != NULL) {
+						float dist2 = glm::length2(pj->position - pi->position);
+						if (dist2 < sphSystem.H2 && pi != pj) {
+							//unit direction and length
+							float dist = sqrt(dist2);
+							glm::vec3 dir = glm::normalize(pj->position - pi->position);
+
+							//apply viscosity force
+							glm::vec3 velocityDif = pj->velocity - pi->velocity;
+							glm::vec3 viscoForce = (pi->viscosity + pj->viscosity) / 2 * pj->mass * (velocityDif / pj->density) * sphSystem.SPIKY_LAP * (sphSystem.h - dist);
+							pi->force += viscoForce;
+
+							//计算ci的梯度，以确定n
+							glm::vec3 nci = dir * pj->mass * (pj->ci - pi->ci) / pj->density * sphSystem.POLY6_GRAD;//计算norm的时候用差值
+							nci *= glm::pow(sphSystem.H2 - dist2, 2) * dist;
+							n += nci;
+
+							//计算ci的拉普拉斯
+							float lci = pj->mass * (pj->ci - pi->ci) / pj->density * sphSystem.POLY6_LAP * (sphSystem.H2 - dist2) * (5 * dist2 - sphSystem.H2);
+							lapCi += lci;
+						}
+						pj = pj->next;
+					}
+				}
+			}
+		}
+		//计算完之后再加上边界力
+		if (dot(n, n) > 0)
+		{
+			glm::normalize(n);
+		}
+		else {
+			n = glm::vec3(0);
+		}
+		glm::vec3 intefaceForce = -1 * sphSystem.tension * lapCi * n;
+		pi->force += intefaceForce;
+	}
+}
+
+void parallelPredictVelocities(const SPHSystem& sphSystem, float deltaTime, int start, int end) {
+	for (int i = start; i < end; i++) {
+		Particle* p = sphSystem.particles[i];
+
+		//calculate acceleration and velocity
+		glm::vec3 acceleration = p->force / p->density + glm::vec3(0, sphSystem.g, 0);//重力怎么算？
+		p->velocity += acceleration * deltaTime;
+	}
+}
+
+void parallelUpdatePositions(const SPHSystem& sphSystem, float deltaTime, int start, int end) {
+	for (int i = start; i < end; i++) {
+		Particle* p = sphSystem.particles[i];
+
+		// Update position
+		p->position += p->velocity * deltaTime;
+
+		// Handle collisions with box
+		float boxWidth = 0.8f;
+		float elasticity = 0.1f;
+		float center = -1.5f + (sphSystem.numParticles * sphSystem.h) / 2;
+		if (p->position.y < p->size) {
+			p->position.y = -p->position.y + 2 * p->size + 0.0001f;
+			p->velocity.y = -p->velocity.y * elasticity;
+		}
+
+		if (p->position.x < p->size - boxWidth + center) {
+			p->position.x = -p->position.x + 2 * (p->size - boxWidth + center) + 0.0001f;
+			p->velocity.x = -p->velocity.x * elasticity;
+		}
+
+		if (p->position.x > -p->size + (boxWidth + center)) {
+			p->position.x = -p->position.x + 2 * -(p->size - (boxWidth + center)) - 0.0001f;
+			p->velocity.x = -p->velocity.x * elasticity;
+		}
+
+		if (p->position.z < p->size - boxWidth + center) {
+			p->position.z = -p->position.z + 2 * (p->size - boxWidth + center) + 0.0001f;
+			p->velocity.z = -p->velocity.z * elasticity;
+		}
+
+		if (p->position.z > -p->size + (boxWidth + center)) {
+			p->position.z = -p->position.z + 2 * -(p->size - (boxWidth + center)) - 0.0001f;
+			p->velocity.z = -p->velocity.z * elasticity;
+		}
+	}
+}
+
+/**
+ * Parallel computation function for calculating density
+ */
+void parallelComputeDensity(const SPHSystem& sphSystem, int start, int end) {
+
+	for (int i = start; i < end; i++) {
+		float pDensity = 0;
+		Particle* pi = sphSystem.particles[i];
+		glm::ivec3 cell = sphSystem.getCell(pi);
+
+		for (int x = -1; x <= 1; x++) {
+			for (int y = -1; y <= 1; y++) {
+				for (int z = -1; z <= 1; z++) {
+					glm::ivec3 near_cell = cell + glm::ivec3(x, y, z);
+					uint index = getHash(near_cell);
+					Particle* pj = sphSystem.particleTable[index];
+
+					// Iterate through cell linked list
+					while (pj != NULL) {
+						float dist2 = glm::length2(pj->position - pi->position);
+						if (dist2 < sphSystem.H2 && pi != pj) {
+							pDensity += pj->mass * sphSystem.POLY6 * glm::pow(sphSystem.H2 - dist2, 3);
+						}
+						pj = pj->next;
+					}
+				}
+			}
+		}
+
+		// Include self density (as itself isn't included in neighbour)
+		if (pi->type == 1)
+		{
+			pi->density = pDensity + sphSystem.SELF_DENS1;
+		}
+		else {
+			pi->density = pDensity + sphSystem.SELF_DENS2;
+		}
+	}
+}
+
+float SPHSystem::updateTimeStepSizeCFL()
+{
+	//遍历找到maxvel
+	float maxVel = 0.0f;
+	for (int i = 0; i < particles.size(); i++) {
+		Particle* pi = particles[i];
+		float velMag = glm::length2(pi->velocity + timeStep * pi->acceleration);
+		if (velMag > maxVel)
+			maxVel = velMag;
+	}
+	if (maxVel < 1.0e-9)
+		maxVel = 1.0e-9;
+	timeStep = 0.4f * (2 * h) / (sqrt(maxVel));
+	timeStep = min(timeStep, DeltaTime);
+	timeStep = max(timeStep, DeltaTime/10);//h = max(h, m_cflMinTimeStepSize);
+	return timeStep;
+}
+
+void SPHSystem::update1(float deltaTime) {
+	if (!started) return;
+
+	deltaTime = DeltaTime;
+	// Build particle hash table // init neighborhoods
+	buildTable();
+
+	// Calculate densities
+	for (int i = 0; i < THREAD_COUNT; i++) {
+		threads[i] = std::thread(parallelComputeDensity, std::ref(*this), blockBoundaries[i], blockBoundaries[i + 1]);
+	}
+	for (std::thread& thread : threads) {
+		thread.join();
+	}
+
+	//compute factors alphai(0)
+	for (int i = 0; i < THREAD_COUNT; i++) {
+		threads[i] = std::thread(parallelComputeDFSPHFactor, std::ref(*this), blockBoundaries[i], blockBoundaries[i + 1]);
+	}
+	for (std::thread& thread : threads) {
+		thread.join();
+	}
+
+	// start simulation loop
+	float t = 0;
+	while (t <= deltaTime)
+	{
+		//printf("t:%f\n", t);
+		//compute non-pressure forces
+		for (int i = 0; i < THREAD_COUNT; i++) {
+			threads[i] = std::thread(parallelComputeNonePressureForces, std::ref(*this), blockBoundaries[i], blockBoundaries[i + 1]);
+		}
+		for (std::thread& thread : threads) {
+			thread.join();
+		}
+
+		//adapt time step size Δt according to CFL condition
+		updateTimeStepSizeCFL();
+		//printf("timeStep:%f\n", timeStep);
+		
+		//predict velocities
+		for (int i = 0; i < THREAD_COUNT; i++) {
+			threads[i] = std::thread(parallelPredictVelocities, std::ref(*this), timeStep , blockBoundaries[i], blockBoundaries[i + 1]);
+		}
+		for (std::thread& thread : threads) {
+			thread.join();
+		}
+
+		//TODO:correctDensityError 
+		densitySolver();
+
+		// update positions
+		for (int i = 0; i < THREAD_COUNT; i++) {
+			threads[i] = std::thread(parallelUpdatePositions, std::ref(*this), timeStep, blockBoundaries[i], blockBoundaries[i + 1]);
+		}
+		for (std::thread& thread : threads) {
+			thread.join();
+		}
+
+		// update neighborhoods
+		buildTable();
+
+		// update ρi and αi
+		// Calculate densities
+		for (int i = 0; i < THREAD_COUNT; i++) {
+			threads[i] = std::thread(parallelComputeDensity, std::ref(*this), blockBoundaries[i], blockBoundaries[i + 1]);
+		}
+		for (std::thread& thread : threads) {
+			thread.join();
+		}
+
+		//compute factors alphai
+		for (int i = 0; i < THREAD_COUNT; i++) {
+			threads[i] = std::thread(parallelComputeDFSPHFactor, std::ref(*this), blockBoundaries[i], blockBoundaries[i + 1]);
+		}
+		for (std::thread& thread : threads) {
+			thread.join();
+		}
+
+		//TODO: correctDivergenceError
+		divergenceSolve();
+
+		if (t == deltaTime)
+		{
+			break;
+		}
+		if (t + timeStep > deltaTime) 
+		{
+			timeStep = deltaTime - t;
+		}
+		t += timeStep;
+		//printf("t then:%f\n", t);
+	}
+	
+}
+
+glm::vec3 SPHSystem::CubicKernelGradW(const glm::vec3& r)
+{
+	glm::vec3 res;
+	const float h3 = h * h * h;
+	float m_k = 8.0f / (PI * h3);
+	float m_l = 48.0f / (PI * h3);
+	const float rl = sqrt(glm::length2(r));
+	const float q = rl / h;
+	if ((rl > 1.0e-9) && (q <= 1.0))
+	{
+		glm::vec3 gradq = r / rl;
+		gradq /= h;
+		if (q <= 0.5)
+		{
+			res = m_l * q * (3.0f * q - 2.0f) * gradq;
+		}
+		else
+		{
+			const float factor = 1.0f - q;
+			res = m_l * (-factor * factor) * gradq;
+		}
+	}
+	else
+		res= glm::vec3(0);
+
+	return res;
+}
+
+void SPHSystem::divergenceSolve()
+{
+	int m_iter = 2000;
+	double m_acc = 0.001;//0.1%
+	double residual = m_acc + 1; // initial residual
+	for (int it = 0; residual > m_acc && it < m_iter; ++it) {
+
+		//compute density change
+		double TotalDensityAdv =0;
+		for (int i = 0; i < particles.size(); i++) {
+				double pDensity = 0;
+				Particle* pi = particles[i];
+				glm::ivec3 cell = getCell(pi);
+
+				double densityAdv = 0;
+				for (int x = -1; x <= 1; x++) {
+					for (int y = -1; y <= 1; y++) {
+						for (int z = -1; z <= 1; z++) {
+							glm::ivec3 near_cell = cell + glm::ivec3(x, y, z);
+							uint index = getHash(near_cell);
+							Particle* pj = particleTable[index];
+
+							// Iterate through cell linked list
+							while (pj != NULL) {
+								densityAdv += pj->mass / pj->density * glm::dot((pi->velocity - pj->velocity),CubicKernelGradW(pi->position - pj->position));
+								pj = pj->next;
+							}
+						}
+					}
+				}
+				pi->densityAdv = densityAdv;
+				TotalDensityAdv += densityAdv;
+				//这里就可以把kai算出来了
+				pi->kai = 1 / timeStep * pi->densityAdv * pi->alpha;
+			
+		}
+
+		// Compute the new residual
+		residual = TotalDensityAdv/ particles.size();//avg
+
+		// adapt velocities
+		for (int i = 0; i < particles.size(); i++) {
+			double pDensity = 0;
+			Particle* pi = particles[i];
+			glm::ivec3 cell = getCell(pi);
+
+			glm::vec3 v = pi->velocity;
+			for (int x = -1; x <= 1; x++) {
+				for (int y = -1; y <= 1; y++) {
+					for (int z = -1; z <= 1; z++) {
+						glm::ivec3 near_cell = cell + glm::ivec3(x, y, z);
+						uint index = getHash(near_cell);
+						Particle* pj = particleTable[index];
+
+						// Iterate through cell linked list
+						while (pj != NULL) {
+							v -= timeStep * pj->mass * (pj->kai / pj->density + pi->kai / pi->density) * CubicKernelGradW(pi->position - pj->position);
+							pj = pj->next;
+						}
+					}
+				}
+			}
+			pi->velocity = v;
+		}
+		
+	}
+}
+
+void SPHSystem::densitySolver()
+{
+	int m_iter = 2000;
+	double m_acc = 0.001;//0.1%
+	double residual = m_acc + 1; // initial residual
+	for (int it = 0; residual > m_acc && it < m_iter; ++it) {
+		//compute density change
+		double TotalDensityError = 0;
+		for (int i = 0; i < particles.size(); i++) {
+			double pDensity = 0;
+			Particle* pi = particles[i];
+			glm::ivec3 cell = getCell(pi);
+
+			double densityAdv = 0;
+			for (int x = -1; x <= 1; x++) {
+				for (int y = -1; y <= 1; y++) {
+					for (int z = -1; z <= 1; z++) {
+						glm::ivec3 near_cell = cell + glm::ivec3(x, y, z);
+						uint index = getHash(near_cell);
+						Particle* pj = particleTable[index];
+
+						// Iterate through cell linked list
+						while (pj != NULL) {
+							densityAdv += pj->mass / pj->density * glm::dot((pi->velocity - pj->velocity), CubicKernelGradW(pi->position - pj->position));
+							pj = pj->next;
+						}
+					}
+				}
+			}
+			pi->densityAdv = densityAdv;
+			float Rdens = pi->type == 1 ? restDensity1 : restDensity2;
+			TotalDensityError += densityAdv - Rdens;
+			pi->kai = (densityAdv - Rdens) / (timeStep * timeStep) * pi->alpha;
+
+		}
+
+		// Compute the new residual
+		residual = TotalDensityError / particles.size();//avg
+		residual = sqrt(residual * residual);
+
+		printf("Pressure solver: it=%d , res=%f\n", it, residual);
+		if (it == m_iter - 1)
+			printf("Pressure solver: it=%d , res=%f \n", it, residual);
+		if (residual < m_acc)
+			printf("Pressure solver: it=%d , res=%f, converged \n", it, residual);
+
+		// adapt velocities
+		for (int i = 0; i < particles.size(); i++) {
+			double pDensity = 0;
+			Particle* pi = particles[i];
+			glm::ivec3 cell = getCell(pi);
+
+			glm::vec3 v = pi->velocity;
+			for (int x = -1; x <= 1; x++) {
+				for (int y = -1; y <= 1; y++) {
+					for (int z = -1; z <= 1; z++) {
+						glm::ivec3 near_cell = cell + glm::ivec3(x, y, z);
+						uint index = getHash(near_cell);
+						Particle* pj = particleTable[index];
+
+						// Iterate through cell linked list
+						while (pj != NULL) {
+							v -= timeStep * pj->mass * (pj->kai / pj->density + pi->kai / pi->density) * CubicKernelGradW(pi->position - pj->position);
+							pj = pj->next;
+						}
+					}
+				}
+			}
+			pi->velocity = v;
+		}
+	}
+}
+
+
 void SPHSystem::update(float deltaTime) {
 	if (!started) return;
 
 	// To increase system stability, a fixed deltaTime is set
-	deltaTime = 0.001f;
+	deltaTime = DeltaTime;
 
 	// Build particle hash table
 	buildTable();
@@ -506,6 +978,6 @@ void SPHSystem::pause() {
 
 void SPHSystem::single() {
 	started = true;
-	SPHSystem::update(0.003);
+	SPHSystem::update1(0.003);
 	started = false;
 }
