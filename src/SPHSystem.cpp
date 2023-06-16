@@ -287,7 +287,7 @@ void parallelForces(const SPHSystem& sphSystem, int start, int end) {
 		else {
 			n = glm::vec3(0);
 		}
-		glm::vec3 intefaceForce = -1 * sphSystem.tension * lapCi * n;
+		glm::vec3 intefaceForce = sphSystem.tension * lapCi * n;
 		//printf("lapc:%f", lapCi);//0.00001
 		if (i == 100)
 		{
@@ -753,6 +753,8 @@ void SPHSystem::densitySolver()
 	int m_iter = 2000;
 	double m_acc = 0.001;//0.1%
 	double residual = m_acc + 1; // initial residual
+
+	double lastRes = 0;
 	for (int it = 0; residual > m_acc && it < m_iter; ++it) {
 		//compute density change
 		double TotalDensityError = 0;
@@ -771,7 +773,10 @@ void SPHSystem::densitySolver()
 
 						// Iterate through cell linked list
 						while (pj != NULL) {
-							densityAdv += pj->mass / pj->density * glm::dot((pi->velocity - pj->velocity), CubicKernelGradW(pi->position - pj->position));
+							float dist2 = glm::length2(pj->position - pi->position);
+							if (dist2 < H2 && pi != pj) {
+								densityAdv += pj->mass / pj->density * glm::dot((pi->velocity - pj->velocity), CubicKernelGradW(pi->position - pj->position));
+							}
 							pj = pj->next;
 						}
 					}
@@ -787,6 +792,12 @@ void SPHSystem::densitySolver()
 		// Compute the new residual
 		residual = TotalDensityError / particles.size();//avg
 		residual = sqrt(residual * residual);
+
+		if (it != 0 && lastRes == residual)
+		{
+			break;//提前退出迭代器的循环
+		}
+		lastRes = residual;
 
 		printf("Pressure solver: it=%d , res=%f\n", it, residual);
 		if (it == m_iter - 1)
@@ -810,7 +821,10 @@ void SPHSystem::densitySolver()
 
 						// Iterate through cell linked list
 						while (pj != NULL) {
-							v -= timeStep * pj->mass * (pj->kai / pj->density + pi->kai / pi->density) * CubicKernelGradW(pi->position - pj->position);
+							float dist2 = glm::length2(pj->position - pi->position);
+							if (dist2 < H2 && pi != pj) {
+								v -= timeStep * pj->mass * (pj->kai / pj->density + pi->kai / pi->density) * CubicKernelGradW(pi->position - pj->position);
+							}
 							pj = pj->next;
 						}
 					}
@@ -978,6 +992,6 @@ void SPHSystem::pause() {
 
 void SPHSystem::single() {
 	started = true;
-	SPHSystem::update1(0.003);
+	SPHSystem::update(0.003);
 	started = false;
 }
