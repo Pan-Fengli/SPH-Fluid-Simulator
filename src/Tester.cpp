@@ -119,7 +119,7 @@ void Tester::Update() {
 	Cam->Update();
 	
 	//update sph system
-	sphSystem->update(deltaTime);
+	sphSystem->update1(deltaTime);
 	
 	// Tell glut to re-display the scene
 	glutSetWindow(WindowHandle);

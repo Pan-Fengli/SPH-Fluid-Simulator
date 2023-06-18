@@ -359,7 +359,7 @@ void parallelUpdateParticlePositions(const SPHSystem& sphSystem, float deltaTime
 void parallelComputeDFSPHFactor(const SPHSystem& sphSystem, int start, int end) {
 	
 	for (int i = start; i < end; i++) {
-		float alpha1 = 0;//第一部分
+		glm::vec3 alpha1 = glm::vec3(0);//第一部分
 		float alpha2 = 0;//第二部分
 		float alphai = 0;
 		Particle* pi = sphSystem.particles[i];
@@ -376,16 +376,16 @@ void parallelComputeDFSPHFactor(const SPHSystem& sphSystem, int start, int end) 
 					while (pj != NULL) {
 						float dist2 = glm::length2(pj->position - pi->position);
 						if (dist2 < sphSystem.H2 && pi != pj) {
-							float tmp = pj->mass * sphSystem.POLY6 * glm::pow(sphSystem.H2 - dist2, 3);
+							glm::vec3 tmp = pj->mass * sphSystem.CubicKernelGradW(pi->position - pj->position);
 							alpha1 += tmp;
-							alpha2 += tmp * tmp;
+							alpha2 += length2(tmp);
 						}
 						pj = pj->next;
 					}
 				}
 			}
 		}
-		float mother = alpha1 * alpha1 + alpha2;//分母
+		float mother = length2(alpha1) + alpha2;//分母
 		if (mother > 0)
 		{
 			alphai = -pi->density / mother;
@@ -581,9 +581,9 @@ void SPHSystem::update1(float deltaTime) {
 
 	// start simulation loop
 	float t = 0;
-	while (t <= deltaTime)
+	while (t < deltaTime)
 	{
-		//printf("t:%f\n", t);
+		printf("t:%f\n", t);
 		//compute non-pressure forces
 		for (int i = 0; i < THREAD_COUNT; i++) {
 			threads[i] = std::thread(parallelComputeNonePressureForces, std::ref(*this), blockBoundaries[i], blockBoundaries[i + 1]);
@@ -594,8 +594,13 @@ void SPHSystem::update1(float deltaTime) {
 
 		//adapt time step size Δt according to CFL condition
 		updateTimeStepSizeCFL();
-		//printf("timeStep:%f\n", timeStep);
+		printf("timeStep:%f\n", timeStep);
 		
+		if (t + timeStep > deltaTime)
+		{
+			timeStep = deltaTime - t;
+		}
+
 		//predict velocities
 		for (int i = 0; i < THREAD_COUNT; i++) {
 			threads[i] = std::thread(parallelPredictVelocities, std::ref(*this), timeStep , blockBoundaries[i], blockBoundaries[i + 1]);
@@ -638,21 +643,13 @@ void SPHSystem::update1(float deltaTime) {
 		//TODO: correctDivergenceError
 		divergenceSolve();
 
-		if (t == deltaTime)
-		{
-			break;
-		}
-		if (t + timeStep > deltaTime) 
-		{
-			timeStep = deltaTime - t;
-		}
 		t += timeStep;
 		//printf("t then:%f\n", t);
 	}
 	
 }
 
-glm::vec3 SPHSystem::CubicKernelGradW(const glm::vec3& r)
+glm::vec3 SPHSystem::CubicKernelGradW(glm::vec3& r)const
 {
 	glm::vec3 res;
 	const float h3 = h * h * h;
@@ -682,9 +679,10 @@ glm::vec3 SPHSystem::CubicKernelGradW(const glm::vec3& r)
 
 void SPHSystem::divergenceSolve()
 {
-	int m_iter = 2000;
+	int m_iter = 200;
 	double m_acc = 0.001;//0.1%
 	double residual = m_acc + 1; // initial residual
+	double lastRes = 0;
 	for (int it = 0; residual > m_acc && it < m_iter; ++it) {
 
 		//compute density change
@@ -704,7 +702,10 @@ void SPHSystem::divergenceSolve()
 
 							// Iterate through cell linked list
 							while (pj != NULL) {
-								densityAdv += pj->mass / pj->density * glm::dot((pi->velocity - pj->velocity),CubicKernelGradW(pi->position - pj->position));
+								float dist2 = glm::length2(pj->position - pi->position);
+								if (dist2 < H2 && pi != pj) {
+									densityAdv += -pi->density * pj->mass / pj->density * glm::dot((pi->velocity - pj->velocity),CubicKernelGradW(pi->position - pj->position));
+								}
 								pj = pj->next;
 							}
 						}
@@ -716,9 +717,6 @@ void SPHSystem::divergenceSolve()
 				pi->kai = 1 / timeStep * pi->densityAdv * pi->alpha;
 			
 		}
-
-		// Compute the new residual
-		residual = TotalDensityAdv/ particles.size();//avg
 
 		// adapt velocities
 		for (int i = 0; i < particles.size(); i++) {
@@ -736,7 +734,10 @@ void SPHSystem::divergenceSolve()
 
 						// Iterate through cell linked list
 						while (pj != NULL) {
-							v -= timeStep * pj->mass * (pj->kai / pj->density + pi->kai / pi->density) * CubicKernelGradW(pi->position - pj->position);
+							float dist2 = glm::length2(pj->position - pi->position);
+							if (dist2 < H2 ) {//&& pi != pj
+								v -= timeStep * pj->mass * (pj->kai / pj->density + pi->kai / pi->density) * CubicKernelGradW(pi->position - pj->position);
+							}
 							pj = pj->next;
 						}
 					}
@@ -744,13 +745,29 @@ void SPHSystem::divergenceSolve()
 			}
 			pi->velocity = v;
 		}
+		// Compute the new residual
+		residual = TotalDensityAdv / particles.size();//avg
+		printf("Pressure solver: it=%d , TotalDensityAdv=%lf\n", it, TotalDensityAdv);
+		printf("Pressure solver: it=%d , res=%lf\n", it, residual);
+		//printf("Pressure solver: it=%d , diff=%lf\n", it, residual- lastRes);
+		//printf("Pressure solver: it=%d , bool=%d\n", it, residual==lastRes);
+		if (it != 0 && (abs(lastRes - residual) < 1.0e-9 || lastRes == residual))
+		{
+			break;//提前退出迭代器的循环
+		}
+		lastRes = residual;
+		residual = sqrt(residual * residual);//为了避免正负绝对值一样。最后才去和要求的误差标准比较
 		
+		if (it == m_iter - 1)
+			printf("Pressure solver: it=%d , res=%f \n", it, residual);
+		if (residual < m_acc)
+			printf("Pressure solver: it=%d , res=%f, converged \n", it, residual);
 	}
 }
 
 void SPHSystem::densitySolver()
 {
-	int m_iter = 2000;
+	int m_iter = 200;
 	double m_acc = 0.001;//0.1%
 	double residual = m_acc + 1; // initial residual
 
@@ -775,35 +792,19 @@ void SPHSystem::densitySolver()
 						while (pj != NULL) {
 							float dist2 = glm::length2(pj->position - pi->position);
 							if (dist2 < H2 && pi != pj) {
-								densityAdv += pj->mass / pj->density * glm::dot((pi->velocity - pj->velocity), CubicKernelGradW(pi->position - pj->position));
+								densityAdv += -pi->density * pj->mass / pj->density * glm::dot((pi->velocity - pj->velocity), CubicKernelGradW(pi->position - pj->position));
 							}
 							pj = pj->next;
 						}
 					}
 				}
 			}
-			pi->densityAdv = densityAdv;
+			pi->rho_predict = pi->density + timeStep * densityAdv;
 			float Rdens = pi->type == 1 ? restDensity1 : restDensity2;
-			TotalDensityError += densityAdv - Rdens;
-			pi->kai = (densityAdv - Rdens) / (timeStep * timeStep) * pi->alpha;
+			TotalDensityError += pi->rho_predict - Rdens;
+			pi->kai = (pi->rho_predict - Rdens) / (timeStep * timeStep) * pi->alpha;
 
 		}
-
-		// Compute the new residual
-		residual = TotalDensityError / particles.size();//avg
-		residual = sqrt(residual * residual);
-
-		if (it != 0 && lastRes == residual)
-		{
-			break;//提前退出迭代器的循环
-		}
-		lastRes = residual;
-
-		printf("Pressure solver: it=%d , res=%f\n", it, residual);
-		if (it == m_iter - 1)
-			printf("Pressure solver: it=%d , res=%f \n", it, residual);
-		if (residual < m_acc)
-			printf("Pressure solver: it=%d , res=%f, converged \n", it, residual);
 
 		// adapt velocities
 		for (int i = 0; i < particles.size(); i++) {
@@ -822,7 +823,7 @@ void SPHSystem::densitySolver()
 						// Iterate through cell linked list
 						while (pj != NULL) {
 							float dist2 = glm::length2(pj->position - pi->position);
-							if (dist2 < H2 && pi != pj) {
+							if (dist2 < H2) {// && pi != pj
 								v -= timeStep * pj->mass * (pj->kai / pj->density + pi->kai / pi->density) * CubicKernelGradW(pi->position - pj->position);
 							}
 							pj = pj->next;
@@ -832,6 +833,24 @@ void SPHSystem::densitySolver()
 			}
 			pi->velocity = v;
 		}
+
+		// Compute the new residual
+		residual = TotalDensityError / particles.size();//avg
+		printf("density solver : it=%d , TotalDensityError=%f\n", it, TotalDensityError);
+		
+		printf("density solver : it=%d , res=%f\n", it, residual);
+		if (it != 0 && lastRes == residual)
+		{
+			break;//提前退出迭代器的循环
+		}
+		lastRes = residual;
+		residual = sqrt(residual * residual);
+		if (it == m_iter - 1)
+			printf("density solver: it=%d , res=%f \n", it, residual);
+		if (residual < m_acc)
+			printf("density solver: it=%d , res=%f, converged \n", it, residual);
+
+
 	}
 }
 
@@ -992,6 +1011,6 @@ void SPHSystem::pause() {
 
 void SPHSystem::single() {
 	started = true;
-	SPHSystem::update(0.003);
+	SPHSystem::update1(0.003);
 	started = false;
 }
