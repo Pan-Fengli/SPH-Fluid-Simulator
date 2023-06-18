@@ -90,7 +90,9 @@ Tester::Tester(const char *windowTitle,int argc,char **argv) {
 	Cam->SetAspect(float(WinX)/float(WinY));
 
 	//init SPH system
-	sphSystem = new SPHSystem(15, 0.025f, 0.015f, 1000, 800, 1, 0.84f, 0.54f, 0.15f, -9.8f, 0.2f);
+	//sphSystem = new SPHSystem(15, 0.025f, 0.015f, 1000, 800, 1, 0.84f, 0.54f, 0.15f, -9.8f, 0.2f);
+	sphSystem = new DFSPHSystem(15, 0.025f, 0.015f, 1000, 800, 1, 0.84f, 0.54f, 0.15f, -9.8f, 0.2f);
+
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -176,7 +178,7 @@ void Tester::Draw() {
 
 		if (ImGui::Button("RESET")) {
 			delete sphSystem;
-			sphSystem = new SPHSystem(numParticles, nMass1, nMass2, nRest1,nRest2, gasConst, nVisco1, nVisco2, nh, -9.8, tension);
+			sphSystem = new DFSPHSystem(numParticles, nMass1, nMass2, nRest1,nRest2, gasConst, nVisco1, nVisco2, nh, -9.8, tension);
 		}
 
 		if (ImGui::Button("START")) {

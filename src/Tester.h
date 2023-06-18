@@ -8,6 +8,7 @@
 #include "Shader.h"
 #include "Camera.h"
 #include "SPHSystem.h"
+#include "DFSPHSystem.h"
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -46,7 +47,8 @@ private:
 	// Components
 	ShaderProgram *InstanceProgram;
 	Camera *Cam;
-	SPHSystem* sphSystem;
+	//SPHSystem* sphSystem;
+	DFSPHSystem* sphSystem;
 
 	//Time
 	int prevTime, currentTime;
