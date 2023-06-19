@@ -4,7 +4,7 @@
 
 int Particle::pCount = 0;
 
-Particle::Particle(float mass, float size, glm::vec3 position, glm::vec3 velocity,int type, float ci) {
+Particle::Particle(double mass, float size, glm::dvec3 position, glm::dvec3 velocity, int type, float ci) {
 	this->mass = mass;
 	this->size = size;
 	this->position = position;

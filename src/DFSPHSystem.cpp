@@ -30,12 +30,13 @@ uint dfgetHash(const glm::ivec3& cell) {
 		) % TABLE_SIZE;
 }
 
-DFSPHSystem::DFSPHSystem(unsigned int numParticles, float mass1, float mass2, float restDensity1, float restDensity2, float gasConst, float viscosity1, float viscosity2, float h, float g, float tension) {
+DFSPHSystem::DFSPHSystem(unsigned int numParticles, float mass1, float mass2, double restDensity1, double restDensity2, float gasConst, double viscosity1, double viscosity2, double h, double g, double tension) {
 	this->numParticles = numParticles;
 	this->restDensity1 = restDensity1;
 	this->restDensity2 = restDensity2;
 	this->viscosity1 = viscosity1;
 	this->viscosity2 = viscosity2;
+	this->dx = h;
 	this->h = h;
 	this->g = g;
 	this->tension = tension;
@@ -45,8 +46,9 @@ DFSPHSystem::DFSPHSystem(unsigned int numParticles, float mass1, float mass2, fl
 	SPIKY_LAP = 45.0f / (PI * pow(h, 6));
 	POLY6_GRAD = -945.0f / (32.0f * PI * pow(h, 9));
 	POLY6_LAP = 945.0f / (32.0f * PI * pow(h, 9));
-	MASS1 = mass1;
-	MASS2 = mass2;
+	//MASS1 = mass1;
+	MASS1 = pow(dx, 3) * restDensity1;
+	MASS1 = pow(dx, 3) * restDensity2;
 	GAS_CONSTANT = gasConst;
 	H2 = h * h;
 	SELF_DENS1 = MASS1 * POLY6 * pow(h, 6);
@@ -89,9 +91,6 @@ DFSPHSystem::DFSPHSystem(unsigned int numParticles, float mass1, float mass2, fl
 	glVertexAttribDivisor(5, 1);
 	glBindBuffer(GL_ARRAY_BUFFER, 0);
 	glBindVertexArray(0);
-
-
-
 
 	//start init
 	started = false;
@@ -145,7 +144,6 @@ void DFSPHSystem::initParticles() {
 				glm::vec3 nParticlePos = glm::vec3(i * particleSeperation + ranX - 1.5f, j * particleSeperation + ranY + h + 0.1f, k * particleSeperation + ranZ - 1.5f);
 
 				//create new particle
-				//Particle* nParticle = new Particle(MASS, h,	nParticlePos, glm::vec3(0));
 				Particle* nParticle;
 				//初始化两种粒子
 				if (pcount < size / 2)
@@ -153,15 +151,14 @@ void DFSPHSystem::initParticles() {
 					//红色的粒子
 					nParticlePos.y -= 0.05f;
 					nParticlePos.x -= particleSeperation;
-					nParticle = new Particle(MASS1, h, nParticlePos, glm::vec3(0), 1, 0.5);
+					nParticle = new Particle(MASS1, h, nParticlePos, glm::dvec3(0), 1, 0.5);
 					nParticle->viscosity = viscosity1;
 				}
 				else {
 					//蓝色的粒子
-					//nParticlePos.y += 0.1f;
 					nParticlePos.y -= 0.05f;
 					nParticlePos.x += particleSeperation;
-					nParticle = new Particle(MASS2, h, nParticlePos, glm::vec3(0), 2, -0.5);
+					nParticle = new Particle(MASS2, h, nParticlePos, glm::dvec3(0), 2, -0.5);
 					nParticle->viscosity = viscosity2;
 				}
 

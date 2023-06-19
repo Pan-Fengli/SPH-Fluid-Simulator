@@ -68,7 +68,7 @@ public:
 	void pause();
 	void single();
 	float updateTimeStepSizeCFL();
-	glm::vec3 CubicKernelGradW(glm::vec3& r) const;
+	glm::dvec3 CubicKernelGradW(glm::dvec3& r) const;
 	void divergenceSolve();
 	void densitySolver();
 };

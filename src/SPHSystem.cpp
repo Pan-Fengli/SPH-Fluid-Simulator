@@ -256,17 +256,17 @@ void parallelForces(const SPHSystem& sphSystem, int start, int end) {
 							glm::vec3 dir = glm::normalize(pj->position - pi->position);
 
 							//apply pressure force
-							glm::vec3 pressureForce = -dir * pj->mass * (pi->pressure + pj->pressure) / (2 * pj->density) * sphSystem.SPIKY_GRAD * (-1.0f);
+							glm::vec3 pressureForce = -dir * (float)pj->mass * (float)(pi->pressure + pj->pressure) / (2 * (float)pj->density) * sphSystem.SPIKY_GRAD * (-1.0f);
 							pressureForce *= std::pow(sphSystem.h - dist, 2);
 							pi->force += pressureForce;
 
 							//apply viscosity force
 							glm::vec3 velocityDif = pj->velocity - pi->velocity;
-							glm::vec3 viscoForce = (pi->viscosity+pj->viscosity)/2 * pj->mass * (velocityDif / pj->density) * sphSystem.SPIKY_LAP * (sphSystem.h - dist);
+							glm::vec3 viscoForce = (float)(pi->viscosity+pj->viscosity)/2 * (float)pj->mass * (velocityDif / (float)pj->density) * sphSystem.SPIKY_LAP * (sphSystem.h - dist);
 							pi->force += viscoForce;
 
 							//计算ci的梯度，以确定n
-							glm::vec3 nci = dir * pj->mass * (pj->ci - pi->ci) / pj->density * sphSystem.POLY6_GRAD;//计算norm的时候用差值
+							glm::vec3 nci = dir * (float)pj->mass * (pj->ci - pi->ci) / (float)pj->density * sphSystem.POLY6_GRAD;//计算norm的时候用差值
 							nci *= glm::pow(sphSystem.H2 - dist2, 2) * dist;
 							n += nci;
 
@@ -316,11 +316,11 @@ void parallelUpdateParticlePositions(const SPHSystem& sphSystem, float deltaTime
 		Particle *p = sphSystem.particles[i];
 
 		//calculate acceleration and velocity
-		glm::vec3 acceleration = p->force / p->density + glm::vec3(0, sphSystem.g, 0);//重力怎么算？
-		p->velocity += acceleration * deltaTime;
+		glm::dvec3 acceleration = p->force / p->density + glm::dvec3(0, sphSystem.g, 0);//重力怎么算？
+		p->velocity += acceleration * (double)deltaTime;
 		
 		// Update position
-		p->position += p->velocity * deltaTime;
+		p->position += p->velocity * (double)deltaTime;
 
 		// Handle collisions with box
 		float boxWidth = 0.8f;
@@ -376,7 +376,7 @@ void parallelComputeDFSPHFactor(const SPHSystem& sphSystem, int start, int end) 
 					while (pj != NULL) {
 						float dist2 = glm::length2(pj->position - pi->position);
 						if (dist2 < sphSystem.H2 && pi != pj) {
-							glm::vec3 tmp = pj->mass * sphSystem.CubicKernelGradW(pi->position - pj->position);
+							glm::vec3 tmp = (double)pj->mass * sphSystem.CubicKernelGradW(pi->position - pj->position);
 							alpha1 += tmp;
 							alpha2 += length2(tmp);
 						}
@@ -420,11 +420,11 @@ void parallelComputeNonePressureForces(const SPHSystem& sphSystem, int start, in
 
 							//apply viscosity force
 							glm::vec3 velocityDif = pj->velocity - pi->velocity;
-							glm::vec3 viscoForce = (pi->viscosity + pj->viscosity) / 2 * pj->mass * (velocityDif / pj->density) * sphSystem.SPIKY_LAP * (sphSystem.h - dist);
+							glm::vec3 viscoForce = (float)(pi->viscosity + pj->viscosity) / 2 * (float)pj->mass * (velocityDif / (float)pj->density) * sphSystem.SPIKY_LAP * (sphSystem.h - dist);
 							pi->force += viscoForce;
 
 							//计算ci的梯度，以确定n
-							glm::vec3 nci = dir * pj->mass * (pj->ci - pi->ci) / pj->density * sphSystem.POLY6_GRAD;//计算norm的时候用差值
+							glm::vec3 nci = dir * (float)pj->mass * (pj->ci - pi->ci) / (float)pj->density * sphSystem.POLY6_GRAD;//计算norm的时候用差值
 							nci *= glm::pow(sphSystem.H2 - dist2, 2) * dist;
 							n += nci;
 
@@ -455,7 +455,7 @@ void parallelPredictVelocities(const SPHSystem& sphSystem, float deltaTime, int 
 		Particle* p = sphSystem.particles[i];
 
 		//calculate acceleration and velocity
-		glm::vec3 acceleration = p->force / p->density + glm::vec3(0, sphSystem.g, 0);//重力怎么算？
+		glm::vec3 acceleration = p->force / p->density + glm::dvec3(0, sphSystem.g, 0);//重力怎么算？
 		p->velocity += acceleration * deltaTime;
 	}
 }
@@ -465,7 +465,7 @@ void parallelUpdatePositions(const SPHSystem& sphSystem, float deltaTime, int st
 		Particle* p = sphSystem.particles[i];
 
 		// Update position
-		p->position += p->velocity * deltaTime;
+		p->position += p->velocity * (double)deltaTime;
 
 		// Handle collisions with box
 		float boxWidth = 0.8f;
@@ -544,7 +544,7 @@ float SPHSystem::updateTimeStepSizeCFL()
 	float maxVel = 0.0f;
 	for (int i = 0; i < particles.size(); i++) {
 		Particle* pi = particles[i];
-		float velMag = glm::length2(pi->velocity + timeStep * pi->acceleration);
+		float velMag = glm::length2(pi->velocity + (double)timeStep * pi->acceleration);
 		if (velMag > maxVel)
 			maxVel = velMag;
 	}
@@ -649,17 +649,17 @@ void SPHSystem::update1(float deltaTime) {
 	
 }
 
-glm::vec3 SPHSystem::CubicKernelGradW(glm::vec3& r)const
+glm::dvec3 SPHSystem::CubicKernelGradW(glm::dvec3& r)const
 {
 	glm::vec3 res;
 	const float h3 = h * h * h;
-	float m_k = 8.0f / (PI * h3);
-	float m_l = 48.0f / (PI * h3);
-	const float rl = sqrt(glm::length2(r));
+	double m_k = 8.0f / (PI * h3);
+	double m_l = 48.0f / (PI * h3);
+	const double rl = sqrt(glm::length2(r));
 	const float q = rl / h;
 	if ((rl > 1.0e-9) && (q <= 1.0))
 	{
-		glm::vec3 gradq = r / rl;
+		glm::dvec3 gradq = r / rl;
 		gradq /= h;
 		if (q <= 0.5)
 		{
@@ -736,7 +736,7 @@ void SPHSystem::divergenceSolve()
 						while (pj != NULL) {
 							float dist2 = glm::length2(pj->position - pi->position);
 							if (dist2 < H2 ) {//&& pi != pj
-								v -= timeStep * pj->mass * (pj->kai / pj->density + pi->kai / pi->density) * CubicKernelGradW(pi->position - pj->position);
+								v -= timeStep * (float)pj->mass * (pj->kai / pj->density + pi->kai / pi->density) * CubicKernelGradW(pi->position - pj->position);
 							}
 							pj = pj->next;
 						}

@@ -37,7 +37,7 @@ private:
 	int tableBlockBoundaries[THREAD_COUNT + 1];
 
 public:
-	DFSPHSystem(unsigned int numParticles, float mass1, float mass2, float restDensity1, float restDensity2, float gasConst, float viscosity1, float viscosity2, float h, float g, float tension);
+	DFSPHSystem(unsigned int numParticles, float mass1, float mass2, double restDensity1, double restDensity2, float gasConst, double viscosity1, double viscosity2, double h, double g, double tension);
 	~DFSPHSystem();
 
 	//kernel/fluid constants
@@ -48,7 +48,7 @@ public:
 	//fluid properties
 	float restDensity1;
 	float restDensity2;
-	float viscosity1, viscosity2, h, g, tension;
+	float viscosity1, viscosity2, h, dx, g, tension;
 
 	std::vector<Particle*> particles;
 	Particle** particleTable;
