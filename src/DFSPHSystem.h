@@ -41,14 +41,17 @@ public:
 	~DFSPHSystem();
 
 	//kernel/fluid constants
-	float POLY6, POLY6_GRAD, POLY6_LAP, SPIKY_GRAD, SPIKY_LAP, GAS_CONSTANT, MASS1, MASS2, H2, SELF_DENS1, SELF_DENS2;
-	float DeltaTime;
-	float timeStep;
+	double POLY6, POLY6_GRAD, POLY6_LAP, SPIKY_GRAD, SPIKY_LAP, GAS_CONSTANT, MASS1, MASS2, H2, SELF_DENS1, SELF_DENS2;
+	double DeltaTime;
+	double timeStep;
+	double CFL_v = 0.30;// # CFL coefficient for velocity
+	double CFL_a = 0.05;// # CFL coefficient for acceleration
 	unsigned int numParticles;
 	//fluid properties
-	float restDensity1;
-	float restDensity2;
-	float viscosity1, viscosity2, h, dx, g, tension;
+	double restDensity1;
+	double restDensity2;
+	double viscosity1, viscosity2, h, dx, g, tension;
+	double c_0 = 200;
 
 	std::vector<Particle*> particles;
 	Particle** particleTable;
@@ -57,7 +60,7 @@ public:
 	// std::mutex mtx;
 
 	//updates the SPH system
-	void update(float deltaTime);
+	//void update(float deltaTime);
 	void update1(float deltaTime);
 
 	//draws the SPH system & its particles
@@ -69,6 +72,8 @@ public:
 	void single();
 	float updateTimeStepSizeCFL();
 	glm::vec3 CubicKernelGradW(glm::vec3& r) const;
+	double cubic_kernel_derivative(double r_mod, double h) const;
+	double DFSPHSystem::cubic_kernel(double r_mod, double h)const;
 	void divergenceSolve();
 	void densitySolver();
 };

@@ -149,12 +149,12 @@ void Tester::Draw() {
 	ImGui_ImplOpenGL2_NewFrame();
 	ImGui_ImplGLUT_NewFrame();
 	{
-		static int numParticles = 22;
+		static int numParticles = 16;//22
 		static float nMass1 = 0.05;//0.015
 		static float nMass2 = 0.01;//0.003
-		static float nh = 0.045f;//0.1
+		static float nh = 0.2;//0.1,0.045 
 		static float nRest1 = 1000.f;//1000
-		static float nRest2 = 200.f;//200
+		static float nRest2 = 1000.f;//200
 		static float nVisco1 = 15.f;//5,50
 		static float nVisco2 = 15.f;
 		static float gasConst = 20.f;

@@ -14,6 +14,8 @@ Particle::Particle(double mass, float size, glm::dvec3 position, glm::dvec3 velo
 
 	force = glm::vec3(0);
 	acceleration = glm::vec3(0);
+	particle_velocity_new = glm::vec3(0);
+	particle_pressure_acc = glm::vec3(0);
 
 	density = 0.0f;
 	pressure = 0.0f;

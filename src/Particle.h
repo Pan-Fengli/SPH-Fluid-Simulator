@@ -10,7 +10,7 @@ private:
 public:
 	// Attributes of particle
 	double mass, size, elasticity;
-	glm::dvec3 position, velocity, acceleration;
+	glm::dvec3 position, velocity, acceleration, particle_velocity_new, particle_pressure_acc;
 	glm::dvec3 force;
 
 	// For linked list
@@ -27,6 +27,8 @@ public:
 	double densityAdv;
 	double kai;
 	double rho_predict;
+	double particle_stiff;
+	double d_density;//drho/dt;
 
 	Particle(double mass, float size, glm::dvec3 position, glm::dvec3 velocity,int type,float ci);
 	~Particle();
