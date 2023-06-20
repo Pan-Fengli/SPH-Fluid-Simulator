@@ -90,8 +90,8 @@ Tester::Tester(const char *windowTitle,int argc,char **argv) {
 	Cam->SetAspect(float(WinX)/float(WinY));
 
 	//init SPH system
-	//sphSystem = new SPHSystem(15, 0.025f, 0.015f, 1000, 800, 1, 0.84f, 0.54f, 0.15f, -9.8f, 0.2f);
-	sphSystem = new DFSPHSystem(15, 0.025f, 0.015f, 1000, 800, 1, 0.84f, 0.54f, 0.15f, -9.8f, 0.2f);
+	sphSystem = new SPHSystem(15, 0.025f, 0.015f, 1000, 800, 1, 0.84f, 0.54f, 0.15f, -9.8f, 0.2f);
+	//sphSystem = new DFSPHSystem(15, 0.025f, 0.015f, 1000, 800, 1, 0.84f, 0.54f, 0.15f, -9.8f, 0.2f);
 
 }
 
@@ -121,7 +121,7 @@ void Tester::Update() {
 	Cam->Update();
 	
 	//update sph system
-	sphSystem->update1(deltaTime);
+	sphSystem->update(deltaTime);
 	
 	// Tell glut to re-display the scene
 	glutSetWindow(WindowHandle);
@@ -149,16 +149,16 @@ void Tester::Draw() {
 	ImGui_ImplOpenGL2_NewFrame();
 	ImGui_ImplGLUT_NewFrame();
 	{
-		static int numParticles = 16;//22
-		static float nMass1 = 0.05;//0.015
-		static float nMass2 = 0.05;//0.003
+		static int numParticles = 22;//22
+		static float nMass1 = 0.1;//0.015
+		static float nMass2 = 0.01;//0.003
 		static float nh = 0.045;//0.1,0.045 
 		static float nRest1 = 1000.f;//1000
-		static float nRest2 = 1000.f;//200
+		static float nRest2 = 100.f;//200
 		static float nVisco1 = 15.f;//5,50
 		static float nVisco2 = 15.f;
 		static float gasConst = 20.f;
-		static float tension = 0.6f;
+		static float tension = 1.0f;
 		static int counter = 0;
 
 		ImGui::Begin("SPH debug");                          // Create GUI window
@@ -178,7 +178,7 @@ void Tester::Draw() {
 
 		if (ImGui::Button("RESET")) {
 			delete sphSystem;
-			sphSystem = new DFSPHSystem(numParticles, nMass1, nMass2, nRest1,nRest2, gasConst, nVisco1, nVisco2, nh, -9.8, tension);
+			sphSystem = new SPHSystem(numParticles, nMass1, nMass2, nRest1,nRest2, gasConst, nVisco1, nVisco2, nh, -9.8, tension);
 		}
 
 		if (ImGui::Button("START")) {

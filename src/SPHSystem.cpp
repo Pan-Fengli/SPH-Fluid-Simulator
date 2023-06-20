@@ -151,15 +151,16 @@ void SPHSystem::initParticles() {
 				if (pcount < size/2)
 				{
 					//红色的粒子
-					nParticlePos.y -= 0.05f;
+					nParticlePos.y += 0.1f;
+					//nParticlePos.y -= 0.05f;
 					nParticlePos.x -= particleSeperation;
 					nParticle = new Particle(MASS1, h, nParticlePos, glm::vec3(0), 1, 0.5);
 					nParticle->viscosity = viscosity1;
 				}
 				else {
 					//蓝色的粒子
-					//nParticlePos.y += 0.1f;
-					nParticlePos.y -= 0.05f;
+					nParticlePos.y += 0.1f;
+					//nParticlePos.y -= 0.05f;
 					nParticlePos.x += particleSeperation;
 					nParticle = new Particle(MASS2, h, nParticlePos, glm::vec3(0), 2, -0.5);
 					nParticle->viscosity = viscosity2;
@@ -293,12 +294,7 @@ void parallelForces(const SPHSystem& sphSystem, int start, int end) {
 		{
 			//printf("before:%f,%f,%f \n", intefaceForce.x, intefaceForce.y, intefaceForce.z);
 		}
-		//fstream f;
-		//f.open("data.txt", ios::out);
-		//输入你想写入的内容 
-		//f << "before:" << to_string(pi->force) << endl;
 		pi->force += intefaceForce;
-		//f << "after:" << to_string(pi->force) << endl;
 		if (i == 100)
 		{
 			//printf("after:%f,%f,%f \n", pi->force.x, pi->force.y, pi->force.z);
@@ -1011,6 +1007,6 @@ void SPHSystem::pause() {
 
 void SPHSystem::single() {
 	started = true;
-	SPHSystem::update1(0.003);
+	SPHSystem::update(0.003);
 	started = false;
 }

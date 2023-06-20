@@ -47,8 +47,8 @@ private:
 	// Components
 	ShaderProgram *InstanceProgram;
 	Camera *Cam;
-	//SPHSystem* sphSystem;
-	DFSPHSystem* sphSystem;
+	SPHSystem* sphSystem;
+	//DFSPHSystem* sphSystem;
 
 	//Time
 	int prevTime, currentTime;
