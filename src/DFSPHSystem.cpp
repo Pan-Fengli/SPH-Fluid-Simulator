@@ -37,7 +37,8 @@ DFSPHSystem::DFSPHSystem(unsigned int numParticles, float mass1, float mass2, do
 	this->viscosity1 = viscosity1;
 	this->viscosity2 = viscosity2;
 	this->dx = h;
-	this->h = h;
+	double df_fac = 1.3;
+	this->h = h * df_fac;
 	this->g = g;
 	this->tension = tension;
 
@@ -47,8 +48,10 @@ DFSPHSystem::DFSPHSystem(unsigned int numParticles, float mass1, float mass2, do
 	POLY6_GRAD = -945.0f / (32.0f * PI * pow(h, 9));
 	POLY6_LAP = 945.0f / (32.0f * PI * pow(h, 9));
 	//MASS1 = mass1;
+	//MASS2 = mass2;
+	int factor = 0.70789;
 	MASS1 = pow(dx, 3) * restDensity1;
-	MASS1 = pow(dx, 3) * restDensity2;
+	MASS2 = pow(dx, 3) * restDensity2;
 	GAS_CONSTANT = gasConst;
 	H2 = h * h;
 	SELF_DENS1 = MASS1 * POLY6 * pow(h, 6);
@@ -131,8 +134,9 @@ DFSPHSystem::~DFSPHSystem() {
 
 void DFSPHSystem::initParticles() {
 	std::srand(1024);
+	//double h = dx;
 	float particleSeperation = h + 0.01f;
-	particleSeperation * 0.5;
+	particleSeperation *= 1.276;
 	int pcount = 0;
 	int size = particles.size();
 	for (int i = 0; i < numParticles; i++) {
@@ -176,7 +180,6 @@ void parallelComputeNonePressureForces(const DFSPHSystem& sphSystem, int start, 
 		Particle* pi = sphSystem.particles[i];
 		glm::ivec3 cell = sphSystem.getCell(pi);
 
-		pi->force = glm::vec3(0);
 		glm::dvec3 d_v = glm::dvec3(0);//dv/dt
 		glm::dvec3 pos_i = pi->position;
 
@@ -212,20 +215,23 @@ void parallelComputeNonePressureForces(const DFSPHSystem& sphSystem, int start, 
 							}
 
 							//计算界面力——
-							//计算ci的梯度，以确定n
-							glm::dvec3 nci = dir * pj->mass * ((double)pj->ci - pi->ci) / pj->density * sphSystem.POLY6_GRAD;//计算norm的时候用差值
-							nci *= glm::pow(sphSystem.H2 - dist2, 2) * dist;
-							n += nci;
+							if (dist2 < sphSystem.H2 && pi != pj) {
+								//计算ci的梯度，以确定n
+								glm::dvec3 nci = dir * pj->mass * ((double)pj->ci - pi->ci) / pj->density * sphSystem.POLY6_GRAD;//计算norm的时候用差值
+								nci *= glm::pow(sphSystem.H2 - dist2, 2) * dist;
+								n += nci;
 
-							//计算ci的拉普拉斯
-							float lci = pj->mass * (pj->ci - pi->ci) / pj->density * sphSystem.POLY6_LAP * (sphSystem.H2 - dist2) * (5 * dist2 - sphSystem.H2);
-							lapCi += lci;
+								//计算ci的拉普拉斯
+								float lci = pj->mass * (pj->ci - pi->ci) / pj->density * sphSystem.POLY6_LAP * (sphSystem.H2 - dist2) * (5 * dist2 - sphSystem.H2);
+								lapCi += lci;
+							}
 						}
 						pj = pj->next;
 					}
 				}
 			}
 		}
+		//printf("visco force:%f,%f,%f\n", d_v.x, d_v.y, d_v.z);
 		//计算完之后再加上边界力
 		if (dot(n, n) > 0)
 		{
@@ -235,15 +241,14 @@ void parallelComputeNonePressureForces(const DFSPHSystem& sphSystem, int start, 
 			n = glm::vec3(0);
 		}
 		glm::dvec3 intefaceForce = -1 * sphSystem.tension * lapCi * n;
-		pi->force += intefaceForce;
 		d_v += intefaceForce / pi->density;
-
+		//printf("intefaceForce force:%f,%f,%f\n", d_v.x, d_v.y, d_v.z);
 		//printf("pi->acceleration except gravity: %f\n", d_v.y);
 		//Add body force 重力
 		d_v += glm::dvec3(0, sphSystem.g, 0);
 
 		pi->acceleration = d_v;
-		//printf("pi->acceleration: %f\n", d_v.y);
+		//printf("pi->acceleration: %f,%f,%f\n", pi->acceleration.x, pi->acceleration.y, pi->acceleration.z);
 	}
 }
 
@@ -254,7 +259,7 @@ void parallelPredictVelocities(const DFSPHSystem& sphSystem, float deltaTime, in
 		//calculate acceleration and velocity
 		p->particle_velocity_new += p->acceleration * sphSystem.timeStep;
 		//printf("pi->acceleration: %f,%f,%f\n", p->acceleration.x, p->acceleration.y, p->acceleration.z);
-		
+		//printf(" PredictVelocities pi->particle_velocity_new: %f,%f,%f\n", p->particle_velocity_new.x, p->particle_velocity_new.y, p->particle_velocity_new.z);
 	}
 }
 
@@ -263,7 +268,7 @@ void handleCollision(const DFSPHSystem& sphSystem, float deltaTime, int start, i
 	for (int i = start; i < end; i++) {
 		Particle* p = sphSystem.particles[i];
 		// Handle collisions with box
-		float boxWidth = 2.2f;
+		float boxWidth = 3.2f;
 		float elasticity = 0.001f;
 		float center = -1.5f + (sphSystem.numParticles * sphSystem.h) / 2;
 		if (p->position.y < p->size) {
@@ -292,12 +297,14 @@ void handleCollision(const DFSPHSystem& sphSystem, float deltaTime, int start, i
 		}
 	}
 }
+
 void parallelUpdatePositions(const DFSPHSystem& sphSystem, float deltaTime, int start, int end) {
 	for (int i = start; i < end; i++) {
 		Particle* p = sphSystem.particles[i];
 		// Update position
 		p->position += p->particle_velocity_new * sphSystem.timeStep;
 		//printf("pi->position: %f,%f,%f\n", p->position.x, p->position.y, p->position.z);
+		//printf("pi->particle_velocity_new: %f,%f,%f\n", p->particle_velocity_new.x, p->particle_velocity_new.y, p->particle_velocity_new.z);
 
 	}
 }
@@ -336,13 +343,18 @@ void parallelComputeDensityAndAplha(const DFSPHSystem& sphSystem, int start, int
 						glm::dvec3 pos_j = pj->position;
 						glm::dvec3 r = pos_i - pos_j;
 						double r_mod = length(r);
-						if (r_mod > 1e-4 && pi != pj) {
+						if (r_mod > 1e-4) {
 							glm::dvec3 grad_val = pj->mass * sphSystem.cubic_kernel_derivative(r_mod, sphSystem.h) * r / r_mod;
 							grad_sum += grad_val;
 							grad_square_sum += dot(grad_val, grad_val);
 
 							// Compute the density
 							curr_rho += pj->mass * sphSystem.cubic_kernel(r_mod, sphSystem.h);
+							//换回原来的计算方式——
+							//float dist2 = glm::length2(pj->position - pi->position);
+							//if (dist2 < sphSystem.H2 && pi != pj) {
+							//	curr_rho += pj->mass * sphSystem.POLY6 * glm::pow(sphSystem.H2 - dist2, 3);
+							//}
 						}
 						pj = pj->next;
 					}
@@ -351,13 +363,14 @@ void parallelComputeDensityAndAplha(const DFSPHSystem& sphSystem, int start, int
 		}
 
 		// Include self density (as itself isn't included in neighbour)
-		if (pi->type == 1)
-		{
-			pi->density = curr_rho + sphSystem.SELF_DENS1;
-		}
-		else {
-			pi->density = curr_rho + sphSystem.SELF_DENS2;
-		}
+		//if (pi->type == 1)
+		//{
+		//	pi->density = curr_rho + sphSystem.SELF_DENS1;
+		//}
+		//else {
+		//	pi->density = curr_rho + sphSystem.SELF_DENS2;
+		//}
+		pi->density = curr_rho;
 		//Set a threshold of 10 ^ -6 to avoid instability
 		pi->alpha = -1.0 / max(dot(grad_sum, grad_sum) + grad_square_sum, 1e-6);
 	}
@@ -383,6 +396,7 @@ float DFSPHSystem::updateTimeStepSizeCFL()
 	double dt_a = CFL_a * sqrt(h / max(max_a, 1e-5));
 
 	timeStep = min(dt_v, min(dt_a, 0.0005));
+	printf("timeStep:%f\n", timeStep);
 	return timeStep;
 }
 
@@ -469,34 +483,6 @@ void DFSPHSystem::update1(float deltaTime) {//step
 
 }
 
-glm::vec3 DFSPHSystem::CubicKernelGradW(glm::vec3& r)const
-{
-	glm::vec3 res;
-	const float h3 = h * h * h;
-	float m_k = 8.0f / (PI * h3);
-	float m_l = 48.0f / (PI * h3);
-	const float rl = sqrt(glm::length2(r));
-	const float q = rl / h;
-	if ((rl > 1.0e-9) && (q <= 1.0))
-	{
-		glm::vec3 gradq = r / rl;
-		gradq /= h;
-		if (q <= 0.5)
-		{
-			res = m_l * q * (3.0f * q - 2.0f) * gradq;
-		}
-		else
-		{
-			const float factor = 1.0f - q;
-			res = m_l * (-factor * factor) * gradq;
-		}
-	}
-	else
-		res = glm::vec3(0);
-
-	return res;
-}
-
 double DFSPHSystem::cubic_kernel_derivative(double r_mod, double h)const
 {
 	double k = 1. / PI / pow(h, 3);
@@ -561,6 +547,7 @@ void DFSPHSystem::divergenceSolve()
 				}
 			}
 			pi->d_density = max(d_rho, 0.0);
+			//pi->d_density = d_rho;
 			double Rdens = pi->type == 1 ? restDensity1 : restDensity2;
 			if (pi->density + timeStep * pi->d_density < Rdens
 				&& pi->density < Rdens)
@@ -607,18 +594,18 @@ void DFSPHSystem::divergenceSolve()
 		it_div++;
 		if (it_div > m_iter)
 		{
-			printf("Warning: DFSPH divergence does not converge, iterated %d steps", it_div);
+			printf("Warning: DFSPH divergence does not converge, iterated %d steps\n", it_div);
 			break;
 		}
 	}
-	printf("density solver : it=%d , res=%f\n", it_div, sum_drho);
+	printf("divergence solver : it=%d , res=%f\n", it_div, sum_drho);
 
 }
 
 void DFSPHSystem::densitySolver()
 {
 	int m_iter = 1000;
-	double m_acc = 0.001;//0.1%
+	double m_acc = 0.01;//1%
 	int it_density = 0;
 	double sum_rho_err = 0;
 	while (sum_rho_err >= m_acc * particles.size() * (restDensity1 + restDensity2) / 2
@@ -680,8 +667,9 @@ void DFSPHSystem::densitySolver()
 							glm::dvec3 pos_j = pj->position;
 							glm::dvec3 r = pos_i - pos_j;
 							double r_mod = length(r);
+							if(i==10) printf("%f :r: %f,%f,%f\n", r_mod, r.x, r.y, r.z);
 							if (r_mod > 1e-4 && pi != pj) {
-								d_v += pj->mass * (pi->particle_stiff +pj->particle_stiff) * cubic_kernel_derivative(r_mod, h) * r / r_mod;
+								d_v += pj->mass * (pi->particle_stiff + pj->particle_stiff) * cubic_kernel_derivative(r_mod, h) * r / r_mod;
 							}
 							pj = pj->next;
 						}
@@ -689,6 +677,7 @@ void DFSPHSystem::densitySolver()
 				}
 			}
 			pi->particle_velocity_new += d_v / max(timeStep, 1e-5);
+			//printf("&d :d_v: %f,%f,%f\n",i, d_v.x, d_v.y, d_v.z);
 			pi->particle_pressure_acc = d_v / max(timeStep * timeStep, 1e-8);
 		}
 		it_density++;
